@@ -101,7 +101,10 @@ class GitRepo:
         repo_paths = []
         for fname in check_fnames:
             fname = Path(fname)
-            fname = fname.resolve()
+            try:
+                fname = fname.resolve()
+            except (RuntimeError, OSError):
+                fname = fname.absolute()
 
             if not fname.exists() and fname.parent.exists():
                 fname = fname.parent

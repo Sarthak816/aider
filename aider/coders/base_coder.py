@@ -467,7 +467,7 @@ class Coder:
                 self.io.tool_warning(f"Skipping {fname} that is not a normal file.")
                 continue
 
-            fname = str(fname.resolve())
+            fname = utils.safe_abs_path(fname)
 
             self.abs_fnames.add(fname)
             self.check_added_files()
