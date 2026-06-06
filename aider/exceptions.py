@@ -76,7 +76,10 @@ class LiteLLMExceptions:
                     raise ValueError(f"{var} is in litellm but not in aider's exceptions list")
 
         for var in self.exception_info:
-            ex = getattr(litellm, var)
+            try:
+                ex = getattr(litellm, var)
+            except AttributeError:
+                continue
             self.exceptions[ex] = self.exception_info[var]
 
     def exceptions_tuple(self):
