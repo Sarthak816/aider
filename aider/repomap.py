@@ -144,6 +144,12 @@ class RepoMap:
             self.io.tool_error("Disabling repo map, git repo too large?")
             self.max_map_tokens = 0
             return
+        except SystemError:
+            self.io.tool_error(
+                "Disabling repo map due to an unexpected error parsing file ASTs"
+            )
+            self.max_map_tokens = 0
+            return
 
         if not files_listing:
             return
@@ -714,36 +720,48 @@ class RepoMap:
         if key in self.tree_cache:
             return self.tree_cache[key]
 
-        if (
-            rel_fname not in self.tree_context_cache
-            or self.tree_context_cache[rel_fname]["mtime"] != mtime
-        ):
-            code = self.io.read_text(abs_fname) or ""
-            if not code.endswith("\n"):
-                code += "\n"
+        try:
+            if (
+                rel_fname not in self.tree_context_cache
+                or self.tree_context_cache[rel_fname]["mtime"] != mtime
+            ):
+                code = self.io.read_text(abs_fname) or ""
+                if not code.endswith("\n"):
+                    code += "\n"
 
-            context = TreeContext(
-                rel_fname,
-                code,
-                color=False,
-                line_number=False,
-                child_context=False,
-                last_line=False,
-                margin=0,
-                mark_lois=False,
-                loi_pad=0,
-                # header_max=30,
-                show_top_of_file_parent_scope=False,
-            )
-            self.tree_context_cache[rel_fname] = {"context": context, "mtime": mtime}
+                context = TreeContext(
+                    rel_fname,
+                    code,
+                    color=False,
+                    line_number=False,
+                    child_context=False,
+                    last_line=False,
+                    margin=0,
+                    mark_lois=False,
+                    loi_pad=0,
+                    # header_max=30,
+                    show_top_of_file_parent_scope=False,
+                )
+                self.tree_context_cache[rel_fname] = {"context": context, "mtime": mtime}
 
-        context = self.tree_context_cache[rel_fname]["context"]
-        context.lines_of_interest = set()
-        context.add_lines_of_interest(lois)
-        context.add_context()
-        res = context.format()
-        self.tree_cache[key] = res
-        return res
+            context = self.tree_context_cache[rel_fname]["context"]
+            context.lines_of_interest = set()
+            context.add_lines_of_interest(lois)
+            context.add_context()
+            res = context.format()
+            self.tree_cache[key] = res
+            return res
+        except SystemError:
+            if self.io:
+                self.io.tool_warning(
+                    f"Failed to parse AST for {rel_fname}, skipping tree context"
+                )
+            # Clear any stale context so we retry fresh next time
+            self.tree_context_cache.pop(rel_fname, None)
+            # Return empty string so the file still appears in the listing
+            # but without AST context
+            self.tree_cache[key] = ""
+            return ""
 
     def to_tree(self, tags, chat_rel_fnames):
         if not tags:
