@@ -775,6 +775,14 @@ def get_parser(default_config_files, git_root):
         help="Load and execute /commands from a file on launch",
     ).complete = shtab.FILE
     group.add_argument(
+        "--aider-md",
+        metavar="AIDER_MD_FILE",
+        help=(
+            "Specify a .aider.md file with project-level instructions for the LLM"
+            " (default: search for .aider.md in git root, cwd or home directory)"
+        ),
+    ).complete = shtab.FILE
+    group.add_argument(
         "--encoding",
         default="utf-8",
         help="Specify the encoding for input and output (default: utf-8)",

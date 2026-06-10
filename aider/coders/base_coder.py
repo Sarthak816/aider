@@ -338,7 +338,16 @@ class Coder:
         file_watcher=None,
         auto_copy_context=False,
         auto_accept_architect=True,
+        aider_md_path=None,
     ):
+        self.aider_md_path = aider_md_path
+        self.aider_md_content = None
+        if self.aider_md_path and Path(self.aider_md_path).exists():
+            try:
+                self.aider_md_content = Path(self.aider_md_path).read_text(encoding="utf-8")
+            except OSError:
+                pass
+
         # Fill in a dummy Analytics if needed, but it is never .enable()'d
         self.analytics = analytics if analytics is not None else Analytics()
 
@@ -1228,6 +1237,14 @@ class Coder:
         main_sys = self.fmt_system_prompt(self.gpt_prompts.main_system)
         if self.main_model.system_prompt_prefix:
             main_sys = self.main_model.system_prompt_prefix + "\n" + main_sys
+
+        if self.aider_md_content:
+            main_sys = (
+                "# Project Instructions\n\n"
+                + self.aider_md_content.strip()
+                + "\n\n"
+                + main_sys
+            )
 
         example_messages = []
         if self.main_model.examples_as_sys_msg:

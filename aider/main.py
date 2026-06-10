@@ -872,6 +872,19 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         if main_model.edit_format in ("diff", "whole", "diff-fenced"):
             main_model.edit_format = "editor-" + main_model.edit_format
 
+    # Search for .aider.md file
+    aider_md_files = generate_search_path_list(
+        ".aider.md", git_root, args.aider_md
+    )
+    aider_md_path = None
+    # Iterate in reverse so most specific path (command_line -> CWD -> git_root -> homedir) wins
+    for fname in reversed(aider_md_files):
+        if Path(fname).exists():
+            aider_md_path = str(Path(fname).resolve())
+            if args.verbose:
+                io.tool_output(f"Found .aider.md: {aider_md_path}")
+            break
+
     if args.verbose:
         io.tool_output("Model metadata:")
         io.tool_output(json.dumps(main_model.info, indent=4))
@@ -1004,6 +1017,7 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             auto_copy_context=args.copy_paste,
             auto_accept_architect=args.auto_accept_architect,
             add_gitignore_files=args.add_gitignore_files,
+            aider_md_path=aider_md_path,
         )
     except UnknownEditFormat as err:
         io.tool_error(str(err))
