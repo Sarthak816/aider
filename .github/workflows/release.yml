@@ -6,6 +6,9 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
+permissions:
+  contents: write
+
 jobs:
   build_and_publish:
     runs-on: ubuntu-latest
@@ -32,3 +35,59 @@ jobs:
       run: |
         python -m build
         twine upload dist/*
+
+  create_release:
+    needs: build_and_publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          RELEASE_DATE=$(date -u +"%Y-%m-%d")
+          echo "Release version: v$VERSION"
+          echo "Release date: $RELEASE_DATE"
+
+          # Try to extract release notes from HISTORY.md
+          awk "/^### Aider v$VERSION/{flag=1; next} /^### Aider v[0-9]+\.[0-9]+\.[0-9]+/{flag=0} flag" HISTORY.md > notes_from_history.md
+
+          if [ -s notes_from_history.md ]; then
+            echo "Release notes found in HISTORY.md for v$VERSION"
+            # Prepend the date header
+            { echo "Released: $RELEASE_DATE"; echo ""; cat notes_from_history.md; } > release_notes.md
+          else
+            echo "No HISTORY.md entry found for v$VERSION — generating notes from git log"
+            # Get the previous version tag for comparison
+            PREV_TAG=$(git tag --sort=-v:refname | grep -P '^v\d+\.\d+\.\d+$' | grep -v "^$GITHUB_REF_NAME$" | head -1)
+            if [ -n "$PREV_TAG" ]; then
+              echo "Comparing against previous tag: $PREV_TAG"
+              git log --oneline --no-decorate "$PREV_TAG..$GITHUB_REF_NAME" -- ':!aider/website' ':!scripts' ':!HISTORY.md' ':!*.md' > git_log.txt
+              {
+                echo "Released: $RELEASE_DATE"
+                echo ""
+                echo "Changes since $PREV_TAG:"
+                echo ""
+                cat git_log.txt
+              } > release_notes.md
+            else
+              echo "No previous tag found — using tag message"
+              {
+                echo "Released: $RELEASE_DATE"
+                echo ""
+                echo "Aider v$VERSION"
+              } > release_notes.md
+            fi
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Aider v$VERSION" \
+            --notes-file release_notes.md
