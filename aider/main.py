@@ -40,6 +40,9 @@ from aider.watch import FileWatcher
 from .dump import dump  # noqa: F401
 
 
+DANGEROUS_CONFIG_KEYS = ["test-cmd", "lint-cmd", "test", "lint", "auto-test", "auto-lint"]
+
+
 def check_config_files_for_yes(config_files):
     found = False
     for config_file in config_files:
@@ -55,6 +58,76 @@ def check_config_files_for_yes(config_files):
             except Exception:
                 pass
     return found
+
+
+def _get_repo_aider_conf_files(git_root):
+    """Get list of repo-root .aider.conf.yml files to check for security scanning."""
+    files = []
+    try:
+        cwd_conf = Path.cwd() / ".aider.conf.yml"
+        if cwd_conf.exists():
+            files.append(cwd_conf)
+    except OSError:
+        pass
+
+    if git_root:
+        git_conf = Path(git_root) / ".aider.conf.yml"
+        if git_conf.exists() and git_conf not in files:
+            files.append(git_conf)
+    return files
+
+
+def _has_keys_in_repo_config(git_root, *keys):
+    """
+    Check if any of the given keys are set in repo-root .aider.conf.yml files.
+    """
+    for config_file in _get_repo_aider_conf_files(git_root):
+        try:
+            with open(config_file, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    for key in keys:
+                        if line.startswith(key + ":"):
+                            return True
+        except OSError:
+            pass
+    return False
+
+
+def check_config_files_for_dangerous_keys(io, git_root):
+    """
+    Scan repo-root config files for keys that could execute arbitrary shell commands
+    and warn the user. This is a security measure against untrusted repositories.
+    """
+    found_keys = []
+    for config_file in _get_repo_aider_conf_files(git_root):
+        try:
+            with open(config_file, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    for key in DANGEROUS_CONFIG_KEYS:
+                        if line.startswith(key + ":"):
+                            found_keys.append((config_file, key))
+        except OSError:
+            pass
+
+    if found_keys:
+        io.tool_warning(
+            "Security Notice: This repository's .aider.conf.yml contains configuration keys"
+            " that can execute arbitrary commands on your machine."
+        )
+        for config_file, key in found_keys:
+            io.tool_warning(f"  - {key} in {config_file}")
+        io.tool_warning(
+            "Aider will ask for your confirmation before running any commands sourced from"
+            " repository configuration."
+        )
+        return True
+    return False
 
 
 def get_git_root():
@@ -979,6 +1052,9 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     else:
         map_tokens = args.map_tokens
 
+    # Warn about dangerous config keys in repo-root config files
+    check_config_files_for_dangerous_keys(io, git_root)
+
     # Track auto-commits configuration
     analytics.event("auto_commits", enabled=bool(args.auto_commits))
 
@@ -1065,6 +1141,16 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         return
 
     if args.lint:
+        if _has_keys_in_repo_config(git_root, "lint", "lint-cmd"):
+            if not io.confirm_ask(
+                "The repository's .aider.conf.yml has enabled linting."
+                " Allow lint commands to run?",
+                default="n",
+                explicit_yes_required=True,
+            ):
+                io.tool_output("Lint declined. Skipping.")
+                analytics.event("exit", reason="Lint declined from repo config")
+                return 1
         coder.commands.cmd_lint(fnames=fnames)
 
     if args.test:
@@ -1072,6 +1158,16 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             io.tool_error("No --test-cmd provided.")
             analytics.event("exit", reason="No test command provided")
             return 1
+        if _has_keys_in_repo_config(git_root, "test", "test-cmd"):
+            if not io.confirm_ask(
+                "The repository's .aider.conf.yml has configured a test command."
+                " Allow it to run?",
+                default="n",
+                explicit_yes_required=True,
+            ):
+                io.tool_output("Test declined. Skipping.")
+                analytics.event("exit", reason="Test declined from repo config")
+                return 1
         coder.commands.cmd_test(args.test_cmd)
         if io.placeholder:
             coder.run(io.placeholder)

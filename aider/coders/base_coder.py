@@ -106,6 +106,8 @@ class Coder:
     auto_test = False
     test_cmd = None
     lint_outcome = None
+    _auto_test_confirmed = False
+    _auto_lint_confirmed = False
     test_outcome = None
     multi_response_content = ""
     partial_response_content = ""
@@ -1614,6 +1616,23 @@ class Coder:
             return
 
         if edited and self.auto_lint:
+            if self.lint_cmds and not self._auto_lint_confirmed:
+                lint_descriptions = "\n".join(
+                    f"{lang or 'all'}: {cmd}" for lang, cmd in self.lint_cmds.items()
+                )
+                ok = self.io.confirm_ask(
+                    "Allow automated lint commands to run?",
+                    subject=lint_descriptions,
+                    default="n",
+                    explicit_yes_required=True,
+                )
+                if not ok:
+                    self.io.tool_output(
+                        "Auto-lint declined. Disabling auto-lint for this session."
+                    )
+                    self.auto_lint = False
+                    return
+                self._auto_lint_confirmed = True
             lint_errors = self.lint_edited(edited)
             self.auto_commit(edited, context="Ran the linter")
             self.lint_outcome = not lint_errors
@@ -1631,6 +1650,20 @@ class Coder:
             ]
 
         if edited and self.auto_test:
+            if self.test_cmd and not self._auto_test_confirmed:
+                ok = self.io.confirm_ask(
+                    "Allow automated test command to run?",
+                    subject=self.test_cmd,
+                    default="n",
+                    explicit_yes_required=True,
+                )
+                if not ok:
+                    self.io.tool_output(
+                        "Auto-test declined. Disabling auto-test for this session."
+                    )
+                    self.auto_test = False
+                    return
+                self._auto_test_confirmed = True
             test_errors = self.commands.cmd_test(self.test_cmd)
             self.test_outcome = not test_errors
             if test_errors:
