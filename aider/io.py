@@ -4,6 +4,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import time
 import webbrowser
 from collections import defaultdict
@@ -979,11 +980,12 @@ class InputOutput:
         try:
             self.console.print(message, **style)
         except UnicodeEncodeError:
-            # Fallback to ASCII-safe output
+            # Fallback to stderr with ASCII-safe content to avoid re-entering
+            # the same Rich legacy Windows renderer that failed
             if isinstance(message, Text):
                 message = message.plain
             message = str(message).encode("ascii", errors="replace").decode("ascii")
-            self.console.print(message, **style)
+            print(message, file=sys.stderr)
 
     def tool_error(self, message="", strip=True):
         self.num_error_outputs += 1
@@ -1009,7 +1011,13 @@ class InputOutput:
             style["reverse"] = bold
 
         style = RichStyle(**style)
-        self.console.print(*messages, style=style)
+        try:
+            self.console.print(*messages, style=style)
+        except UnicodeEncodeError:
+            # Fallback: print plain text to avoid Rich legacy Windows renderer crashes
+            plain = " ".join(m.plain if hasattr(m, "plain") else str(m) for m in messages)
+            plain = plain.encode("ascii", errors="replace").decode("ascii")
+            print(plain)
 
     def get_assistant_mdstream(self):
         mdargs = dict(
@@ -1038,7 +1046,12 @@ class InputOutput:
         else:
             show_resp = Text(message or "(empty response)")
 
-        self.console.print(show_resp)
+        try:
+            self.console.print(show_resp)
+        except UnicodeEncodeError:
+            # Fallback to plain text using the original message string
+            plain = message.encode("ascii", errors="replace").decode("ascii")
+            print(plain)
 
     def set_placeholder(self, placeholder):
         """Set a one-time placeholder text for the next input prompt."""
