@@ -750,19 +750,40 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             io.tool_output(f"Loaded {fname}")
 
     all_files = args.files + (args.file or [])
-    fnames = [str(Path(fn).resolve()) for fn in all_files]
+    fnames = []
+    for fn in all_files:
+        try:
+            fnames.append(str(Path(fn).resolve()))
+        except OSError:
+            fnames.append(str(fn))  # fallback if path is too long or otherwise invalid
     read_only_fnames = []
     for fn in args.read or []:
-        path = Path(fn).expanduser().resolve()
-        if path.is_dir():
-            read_only_fnames.extend(str(f) for f in path.rglob("*") if f.is_file())
+        try:
+            path = Path(fn).expanduser().resolve()
+        except OSError:
+            path = Path(fn).expanduser()
+        try:
+            is_dir = path.is_dir()
+        except OSError:
+            is_dir = False
+        if is_dir:
+            try:
+                read_only_fnames.extend(
+                    str(f) for f in path.rglob("*") if f.is_file()
+                )
+            except OSError:
+                pass  # skip if we can't enumerate the directory
         else:
             read_only_fnames.append(str(path))
 
     if len(all_files) > 1:
         good = True
         for fname in all_files:
-            if Path(fname).is_dir():
+            try:
+                is_dir = Path(fname).is_dir()
+            except OSError:
+                is_dir = False
+            if is_dir:
                 io.tool_error(f"{fname} is a directory, not provided alone.")
                 good = False
         if not good:
@@ -774,9 +795,16 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
 
     git_dname = None
     if len(all_files) == 1:
-        if Path(all_files[0]).is_dir():
+        try:
+            first_is_dir = Path(all_files[0]).is_dir()
+        except OSError:
+            first_is_dir = False
+        if first_is_dir:
             if args.git:
-                git_dname = str(Path(all_files[0]).resolve())
+                try:
+                    git_dname = str(Path(all_files[0]).resolve())
+                except OSError:
+                    git_dname = all_files[0]  # fallback if path is too long
                 fnames = []
             else:
                 io.tool_error(f"{all_files[0]} is a directory, but --no-git selected.")
