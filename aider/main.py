@@ -338,14 +338,16 @@ def launch_gui(args):
 
     st_args += ["--"] + args
 
-    cli.main(st_args)
-
-    # from click.testing import CliRunner
-    # runner = CliRunner()
-    # from streamlit.web import bootstrap
-    # bootstrap.load_config_options(flag_options={})
-    # cli.main_run(target, args)
-    # sys.argv = ['streamlit', 'run', '--'] + args
+    try:
+        cli.main(st_args)
+    except RuntimeError:
+        # Windows: Ctrl+C during asyncio event loop can cause
+        # RuntimeError: reentrant call inside <_io.BufferedWriter>
+        # when Streamlit's signal handler tries to print to stdout
+        # while the BufferedWriter is locked by select().
+        # This is a known issue with colorama/ansitowin32 on Windows.
+        # Swallow the error since the user already pressed Ctrl+C to stop.
+        pass
 
 
 def parse_lint_cmds(lint_cmds, io):
