@@ -772,7 +772,7 @@ class Commands:
             else:
                 try:
                     raw_matched_files = list(Path(self.coder.root).glob(pattern))
-                except (IndexError, AttributeError):
+                except (IndexError, AttributeError, NotImplementedError):
                     raw_matched_files = []
         except ValueError as err:
             self.io.tool_error(f"Error matching {pattern}: {err}")
@@ -1358,7 +1358,14 @@ class Commands:
                     matches = [Path(p) for p in glob.glob(expanded_pattern)]
                 else:
                     # For relative paths and globs, use glob from the root directory
-                    matches = list(Path(self.coder.root).glob(expanded_pattern))
+                    try:
+                        matches = list(Path(self.coder.root).glob(expanded_pattern))
+                    except NotImplementedError:
+                        # On Windows, Path.glob() rejects patterns with a root
+                        # separator but no drive letter (e.g. "/*.py").
+                        # Fall back to glob.glob() with the full path.
+                        full_pattern = str(Path(self.coder.root) / expanded_pattern)
+                        matches = [Path(p) for p in glob.glob(full_pattern)]
 
             if not matches:
                 self.io.tool_error(f"No matches found for: {pattern}")
