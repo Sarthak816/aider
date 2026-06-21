@@ -20,21 +20,26 @@ VERBOSE = False
 
 class LazyLiteLLM:
     _lazy_module = None
+    _import_error = None
 
     def __getattr__(self, name):
-        if name == "_lazy_module":
-            return super()
-        self._load_litellm()
+        if name in ("_lazy_module", "_import_error"):
+            raise AttributeError(name)
+        if self._import_error:
+            raise self._import_error
+        if self._lazy_module is None:
+            self._load_litellm()
         return getattr(self._lazy_module, name)
 
     def _load_litellm(self):
-        if self._lazy_module is not None:
-            return
-
         if VERBOSE:
             print("Loading litellm...")
 
-        self._lazy_module = importlib.import_module("litellm")
+        try:
+            self._lazy_module = importlib.import_module("litellm")
+        except Exception as e:
+            self._import_error = e
+            raise
 
         self._lazy_module.suppress_debug_info = True
         self._lazy_module.set_verbose = False

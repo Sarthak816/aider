@@ -748,7 +748,12 @@ class Model(ModelSettings):
         # https://github.com/BerriAI/litellm/issues/3190
 
         model = self.name
-        res = litellm.validate_environment(model)
+        try:
+            res = litellm.validate_environment(model)
+        except AttributeError:
+            # litellm failed to import due to a circular import (Issue #5268)
+            # Return a safe default so aider can still start
+            return dict(keys_in_environment=False, missing_keys=["litellm_circular_import"])
 
         # If missing AWS credential keys but AWS_PROFILE is set, consider AWS credentials valid
         if res["missing_keys"] and any(
@@ -1228,7 +1233,10 @@ def fuzzy_match_models(name):
     name = name.lower()
 
     chat_models = set()
-    model_metadata = list(litellm.model_cost.items())
+    try:
+        model_metadata = list(litellm.model_cost.items())
+    except AttributeError:
+        model_metadata = []
     model_metadata += list(model_info_manager.local_model_metadata.items())
 
     for orig_model, attrs in model_metadata:
