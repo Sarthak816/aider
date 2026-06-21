@@ -371,6 +371,25 @@ class RepoMap:
     def get_ranked_tags(
         self, chat_fnames, other_fnames, mentioned_fnames, mentioned_idents, progress=None
     ):
+        try:
+            return self._get_ranked_tags_impl(
+                chat_fnames,
+                other_fnames,
+                mentioned_fnames,
+                mentioned_idents,
+                progress,
+            )
+        except SystemError:
+            if self.io:
+                self.io.tool_warning(
+                    "Repo map error: possible bytecode cache corruption. "
+                    "Try clearing __pycache__ directories or reinstalling aider."
+                )
+            return []
+
+    def _get_ranked_tags_impl(
+        self, chat_fnames, other_fnames, mentioned_fnames, mentioned_idents, progress=None
+    ):
         import networkx as nx
 
         defines = defaultdict(set)
