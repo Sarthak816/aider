@@ -858,6 +858,15 @@ def get_parser(default_config_files, git_root):
         "--editor",
         help="Specify which editor to use for the /editor command",
     )
+    group.add_argument(
+        "--auto-session",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Enable/disable auto-saving and restoring of the chat session's file list"
+            " (.aider.session.json) in the working directory (default: True)"
+        ),
+    )
 
     supported_shells_list = sorted(list(shtab.SUPPORTED_SHELLS))
     group.add_argument(

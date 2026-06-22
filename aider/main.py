@@ -29,6 +29,7 @@ from aider.deprecated import handle_deprecated_model_args
 from aider.format_settings import format_settings, scrub_sensitive_info
 from aider.history import ChatSummary
 from aider.io import InputOutput
+from aider.session import SessionState
 from aider.llm import litellm  # noqa: F401; properly init litellm on launch
 from aider.models import ModelSettings
 from aider.onboarding import offer_openrouter_oauth, select_default_model
@@ -1066,6 +1067,34 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         [main_model.weak_model, main_model],
         args.max_chat_history_tokens or main_model.max_chat_history_tokens,
     )
+
+    # Auto-restore session if enabled and no explicit file args
+    if args.auto_session and not fnames and not read_only_fnames:
+        session_root = git_root or os.getcwd()
+        session = SessionState(session_root)
+        session_data = session.read()
+        if session_data and not args.yes_always:
+            file_count = len(session_data.get("files", {}).get("editable", []))
+            read_only_count = len(session_data.get("files", {}).get("read_only", []))
+            total = file_count + read_only_count
+            if total > 0:
+                io.tool_output(
+                    f"Found previous session with {file_count} editable and"
+                    f" {read_only_count} read-only files."
+                )
+                if io.confirm_ask("Restore previous session?"):
+                    for rel_fname in session_data["files"]["editable"]:
+                        abs_fname = os.path.join(session_root, rel_fname)
+                        if os.path.isfile(abs_fname):
+                            fnames.append(abs_fname)
+                    for rel_fname in session_data["files"]["read_only"]:
+                        abs_fname = os.path.join(session_root, rel_fname)
+                        if os.path.isfile(abs_fname):
+                            read_only_fnames.append(abs_fname)
+                    io.tool_output("Restored session files.")
+                else:
+                    session.clear()
+                    io.tool_output("Session cleared.")
 
     if args.cache_prompts and args.map_refresh == "auto":
         args.map_refresh = "files"

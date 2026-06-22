@@ -22,6 +22,7 @@ from aider.llm import litellm
 from aider.repo import ANY_GIT_ERROR
 from aider.run_cmd import run_cmd
 from aider.scrape import Scraper, install_playwright
+from aider.session import SessionState
 from aider.utils import is_image_file
 
 from .dump import dump  # noqa: F401
@@ -83,6 +84,9 @@ class Commands:
 
         # Store the original read-only filenames provided via args.read
         self.original_read_only_fnames = set(original_read_only_fnames or [])
+
+        # Session auto-tracking
+        self._session = None
 
     def cmd_model(self, args):
         "Switch the Main Model to a new LLM"
@@ -440,6 +444,7 @@ class Commands:
         "Drop all files and clear the chat history"
         self._drop_all_files()
         self._clear_chat_history()
+        self._clear_session()
         self.io.tool_output("All files dropped and chat history cleared.")
 
     def cmd_tokens(self, args):
@@ -796,6 +801,23 @@ class Commands:
         res = list(map(str, matched_files))
         return res
 
+    def _save_session(self):
+        """Persist the current file list to the session file (best-effort)."""
+        if not self.coder or not self.coder.root:
+            return
+        if self._session is None:
+            self._session = SessionState(self.coder.root)
+        editable = [self.coder.get_rel_fname(f) for f in self.coder.abs_fnames]
+        read_only = [self.coder.get_rel_fname(f) for f in self.coder.abs_read_only_fnames]
+        self._session.write(editable, read_only)
+
+    def _clear_session(self):
+        """Remove the session file from disk."""
+        if self._session is None and self.coder and self.coder.root:
+            self._session = SessionState(self.coder.root)
+        if self._session:
+            self._session.clear()
+
     def cmd_add(self, args):
         "Add files to the chat so aider can edit them or review them in detail"
 
@@ -901,6 +923,7 @@ class Commands:
                     fname = self.coder.get_rel_fname(abs_file_path)
                     self.io.tool_output(f"Added {fname} to the chat")
                     self.coder.check_added_files()
+                    self._save_session()
 
     def completions_drop(self):
         files = self.coder.get_inchat_relative_files()
@@ -920,6 +943,7 @@ class Commands:
             else:
                 self.io.tool_output("Dropping all files from the chat session.")
             self._drop_all_files()
+            self._clear_session()
             return
 
         filenames = parse_quoted_filenames(args)
@@ -963,6 +987,7 @@ class Commands:
                 if abs_fname in self.coder.abs_fnames:
                     self.coder.abs_fnames.remove(abs_fname)
                     self.io.tool_output(f"Removed {matched_file} from the chat")
+        self._save_session()
 
     def cmd_git(self, args):
         "Run a git command (output excluded from chat)"
@@ -1334,6 +1359,7 @@ class Commands:
                 self.coder.abs_read_only_fnames.add(fname)
                 rel_fname = self.coder.get_rel_fname(fname)
                 self.io.tool_output(f"Converted {rel_fname} to read-only")
+            self._save_session()
             return
 
         filenames = parse_quoted_filenames(args)
@@ -1382,6 +1408,8 @@ class Commands:
             else:
                 self.io.tool_error(f"Not a file or directory: {abs_path}")
 
+        self._save_session()
+
     def _add_read_only_file(self, abs_path, original_name):
         if is_image_file(original_name) and not self.coder.main_model.info.get("supports_vision"):
             self.io.tool_error(
@@ -1402,6 +1430,7 @@ class Commands:
         else:
             self.coder.abs_read_only_fnames.add(abs_path)
             self.io.tool_output(f"Added {original_name} to read-only files.")
+        self._save_session()
 
     def _add_read_only_directory(self, abs_path, original_name):
         added_files = 0
@@ -1421,6 +1450,7 @@ class Commands:
             )
         else:
             self.io.tool_output(f"No new files added from directory {original_name}.")
+        self._save_session()
 
     def cmd_map(self, args):
         "Print out the current repository map"
