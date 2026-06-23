@@ -386,6 +386,14 @@ class RepoMap:
                     "Try clearing __pycache__ directories or reinstalling aider."
                 )
             return []
+        except KeyError:
+            if self.io:
+                self.io.tool_warning(
+                    "Repo map error: networkx dispatch registry conflict. "
+                    "This is a known networkx issue. Try reinstalling: "
+                    "pip install --force-reinstall networkx"
+                )
+            return []
 
     def _get_ranked_tags_impl(
         self, chat_fnames, other_fnames, mentioned_fnames, mentioned_idents, progress=None
