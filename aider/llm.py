@@ -38,6 +38,14 @@ class LazyLiteLLM:
         try:
             self._lazy_module = importlib.import_module("litellm")
         except Exception as e:
+            if "partially initialized module" in str(e) and "circular import" in str(e):
+                wrapped = ImportError(
+                    "litellm failed to import due to a circular dependency in your installed"
+                    " version. Try upgrading or reinstalling litellm:\n"
+                    "  pip install --upgrade litellm"
+                )
+                self._import_error = wrapped
+                raise wrapped from e
             self._import_error = e
             raise
 
