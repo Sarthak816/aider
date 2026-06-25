@@ -150,6 +150,13 @@ class RepoMap:
             )
             self.max_map_tokens = 0
             return
+        except ImportError:
+            self.io.tool_error(
+                "Disabling repo map due to a missing Python dependency (scipy or networkx)."
+                " Try: pip install --upgrade scipy networkx"
+            )
+            self.max_map_tokens = 0
+            return
 
         if not files_listing:
             return
@@ -392,6 +399,13 @@ class RepoMap:
                     "Repo map error: networkx dispatch registry conflict. "
                     "This is a known networkx issue. Try reinstalling: "
                     "pip install --force-reinstall networkx"
+                )
+            return []
+        except ImportError:
+            if self.io:
+                self.io.tool_warning(
+                    "Repo map error: missing Python dependency (scipy). "
+                    "Try upgrading: pip install --upgrade scipy networkx"
                 )
             return []
 
