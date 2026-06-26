@@ -65,7 +65,15 @@ class LiteLLMExceptions:
         self._load()
 
     def _load(self, strict=False):
-        import litellm
+        try:
+            import litellm
+        except ModuleNotFoundError:
+            print(
+                "Warning: litellm has a partial installation (missing submodules). "
+                "Exception retry logic will be disabled. "
+                "Try: pip install --upgrade litellm"
+            )
+            return
 
         for var in dir(litellm):
             # Filter by BaseException because instances of non-exception classes cannot be caught.
@@ -87,7 +95,10 @@ class LiteLLMExceptions:
 
     def get_ex_info(self, ex):
         """Return the ExInfo for a given exception instance"""
-        import litellm
+        try:
+            import litellm
+        except ModuleNotFoundError:
+            return ExInfo(None, None, None)
 
         if ex.__class__ is litellm.APIConnectionError:
             if "boto3" in str(ex):
