@@ -819,35 +819,77 @@ class Model(ModelSettings):
 
         Returns:
             Integer token value
+
+        Raises:
+            ValueError: If the value is None, empty, non-numeric, or negative
         """
+        if value is None:
+            raise ValueError("Token value must not be None")
+
         if isinstance(value, int):
+            if value < 0:
+                raise ValueError(f"Token value must be non-negative, got {value}")
             return value
 
         if not isinstance(value, str):
-            return int(value)  # Try to convert to int
+            try:
+                val = int(value)
+                if val < 0:
+                    raise ValueError(f"Token value must be non-negative, got {val}")
+                return val
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"Token value must be a string or number, got {type(value).__name__}"
+                )
 
-        value = value.strip().upper()
+        value = value.strip()
+        if not value:
+            raise ValueError("Token value must not be empty")
 
-        if value.endswith("K"):
+        upper = value.upper()
+
+        if upper.endswith("K"):
             multiplier = 1024
-            value = value[:-1]
-        elif value.endswith("M"):
+            num_str = upper[:-1]
+        elif upper.endswith("M"):
             multiplier = 1024 * 1024
-            value = value[:-1]
+            num_str = upper[:-1]
         else:
             multiplier = 1
+            num_str = upper
+
+        if not num_str:
+            raise ValueError(f"Missing numeric value before suffix in '{value}'")
 
         # Convert to float first to handle decimal values like "10.5k"
-        return int(float(value) * multiplier)
+        try:
+            result = int(float(num_str) * multiplier)
+        except ValueError:
+            raise ValueError(
+                f"Invalid token value '{value}'. Expected a number "
+                "with optional K/k or M/m suffix (e.g., 8096, 8k, 10.5k, 0.5M)"
+            )
+
+        if result < 0:
+            raise ValueError(f"Token value must be non-negative, got {value}")
+
+        return result
 
     def set_thinking_tokens(self, value):
         """
         Set the thinking token budget for models that support it.
         Accepts formats: 8096, "8k", "10.5k", "0.5M", "10K", etc.
         Pass "0" to disable thinking tokens.
+
+        Raises:
+            ValueError: If the parsed token value is negative
         """
         if value is not None:
             num_tokens = self.parse_token_value(value)
+            if num_tokens < 0:
+                raise ValueError(
+                    f"Thinking token budget must be non-negative, got {num_tokens}"
+                )
             self.use_temperature = False
             if not self.extra_params:
                 self.extra_params = {}

@@ -1618,6 +1618,7 @@ class Commands:
         """Set the thinking token budget, eg: 8096, 8k, 10.5k, 0.5M, or 0 to disable."""
         model = self.coder.main_model
 
+        args = args or ""
         if not args.strip():
             # Display current value if no args are provided
             formatted_budget = model.get_thinking_tokens()
@@ -1630,8 +1631,12 @@ class Commands:
                 )
             return
 
-        value = args.strip()
-        model.set_thinking_tokens(value)
+        try:
+            value = args.strip()
+            model.set_thinking_tokens(value)
+        except ValueError as err:
+            self.io.tool_error(f"Invalid thinking token value: {err}")
+            return
 
         # Handle the special case of 0 to disable thinking tokens
         if value == "0":
@@ -1653,6 +1658,7 @@ class Commands:
         "Set the reasoning effort level (values: number or low/medium/high depending on model)"
         model = self.coder.main_model
 
+        args = args or ""
         if not args.strip():
             # Display current value if no args are provided
             reasoning_value = model.get_reasoning_effort()
@@ -1729,6 +1735,12 @@ def expand_subdir(file_path):
 
 
 def parse_quoted_filenames(args):
+    if args is None:
+        return []
+    if not isinstance(args, str):
+        raise TypeError(f"Expected string for filenames, got {type(args).__name__}")
+    if not args.strip():
+        return []
     filenames = re.findall(r"\"(.+?)\"|(\S+)", args)
     filenames = [name for sublist in filenames for name in sublist if name]
     return filenames
