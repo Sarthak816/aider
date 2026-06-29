@@ -560,7 +560,7 @@ transformers==5.3.0
     # via sentence-transformers
 tree-sitter==0.25.2
     # via tree-sitter-language-pack
-tree-sitter-c-sharp==0.23.1
+tree-sitter-c-sharp==0.23.5
     # via tree-sitter-language-pack
 tree-sitter-embedded-template==0.25.0
     # via tree-sitter-language-pack
