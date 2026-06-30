@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import glob
 import os
 import re
@@ -7,6 +9,7 @@ import tempfile
 from collections import OrderedDict
 from os.path import expanduser
 from pathlib import Path
+from typing import Any, Callable, Optional, Union
 
 import pyperclip
 from PIL import Image, ImageGrab
@@ -28,7 +31,7 @@ from .dump import dump  # noqa: F401
 
 
 class SwitchCoder(Exception):
-    def __init__(self, placeholder=None, **kwargs):
+    def __init__(self, placeholder: Optional[str] = None, **kwargs: Any):
         self.kwargs = kwargs
         self.placeholder = placeholder
 
@@ -37,7 +40,7 @@ class Commands:
     voice = None
     scraper = None
 
-    def clone(self):
+    def clone(self) -> Commands:
         return Commands(
             self.io,
             None,
@@ -54,15 +57,15 @@ class Commands:
         self,
         io,
         coder,
-        voice_language=None,
-        voice_input_device=None,
-        voice_format=None,
-        verify_ssl=True,
-        args=None,
-        parser=None,
-        verbose=False,
-        editor=None,
-        original_read_only_fnames=None,
+        voice_language: Optional[str] = None,
+        voice_input_device: Optional[str] = None,
+        voice_format: Optional[str] = None,
+        verify_ssl: bool = True,
+        args: Optional[Any] = None,
+        parser: Optional[Any] = None,
+        verbose: bool = False,
+        editor: Optional[str] = None,
+        original_read_only_fnames: Optional[Union[set, list]] = None,
     ):
         self.io = io
         self.coder = coder
@@ -84,7 +87,7 @@ class Commands:
         # Store the original read-only filenames provided via args.read
         self.original_read_only_fnames = set(original_read_only_fnames or [])
 
-    def cmd_model(self, args):
+    def cmd_model(self, args: str) -> None:
         "Switch the Main Model to a new LLM"
 
         model_name = args.strip()
@@ -111,7 +114,7 @@ class Commands:
 
         raise SwitchCoder(main_model=model, edit_format=new_edit_format)
 
-    def cmd_editor_model(self, args):
+    def cmd_editor_model(self, args: str) -> None:
         "Switch the Editor Model to a new LLM"
 
         model_name = args.strip()
@@ -123,7 +126,7 @@ class Commands:
         models.sanity_check_models(self.io, model)
         raise SwitchCoder(main_model=model)
 
-    def cmd_weak_model(self, args):
+    def cmd_weak_model(self, args: str) -> None:
         "Switch the Weak Model to a new LLM"
 
         model_name = args.strip()
@@ -135,7 +138,7 @@ class Commands:
         models.sanity_check_models(self.io, model)
         raise SwitchCoder(main_model=model)
 
-    def cmd_chat_mode(self, args):
+    def cmd_chat_mode(self, args: str) -> None:
         "Switch to a new chat mode"
 
         from aider import coders
@@ -202,11 +205,11 @@ class Commands:
             summarize_from_coder=summarize_from_coder,
         )
 
-    def completions_model(self):
-        models = litellm.model_cost.keys()
-        return models
+    def completions_model(self) -> list:
+        model_keys = litellm.model_cost.keys()
+        return model_keys
 
-    def cmd_models(self, args):
+    def cmd_models(self, args: str) -> None:
         "Search the list of available models"
 
         args = args.strip()
@@ -216,13 +219,13 @@ class Commands:
         else:
             self.io.tool_output("Please provide a partial model name to search for.")
 
-    def cmd_web(self, args, return_content=False):
+    def cmd_web(self, args: str, return_content: bool = False) -> Optional[str]:
         "Scrape a webpage, convert to markdown and send in a message"
 
         url = args.strip()
         if not url:
             self.io.tool_error("Please provide a URL to scrape.")
-            return
+            return None
 
         self.io.tool_output(f"Scraping {url}...")
         if not self.scraper:
@@ -251,11 +254,12 @@ class Commands:
             dict(role="user", content=content),
             dict(role="assistant", content="Ok."),
         ]
+        return None
 
-    def is_command(self, inp):
+    def is_command(self, inp: str) -> bool:
         return inp[0] in "/!"
 
-    def get_raw_completions(self, cmd):
+    def get_raw_completions(self, cmd: str) -> Optional[Callable]:
         assert cmd.startswith("/")
         cmd = cmd[1:]
         cmd = cmd.replace("-", "_")
@@ -263,17 +267,17 @@ class Commands:
         raw_completer = getattr(self, f"completions_raw_{cmd}", None)
         return raw_completer
 
-    def get_completions(self, cmd):
+    def get_completions(self, cmd: str) -> Optional[list]:
         assert cmd.startswith("/")
         cmd = cmd[1:]
 
         cmd = cmd.replace("-", "_")
         fun = getattr(self, f"completions_{cmd}", None)
         if not fun:
-            return
+            return None
         return sorted(fun())
 
-    def get_commands(self):
+    def get_commands(self) -> list:
         commands = []
         for attr in dir(self):
             if not attr.startswith("cmd_"):
@@ -284,23 +288,24 @@ class Commands:
 
         return commands
 
-    def do_run(self, cmd_name, args):
+    def do_run(self, cmd_name: str, args: str) -> Optional[Any]:
         cmd_name = cmd_name.replace("-", "_")
         cmd_method_name = f"cmd_{cmd_name}"
         cmd_method = getattr(self, cmd_method_name, None)
         if not cmd_method:
             self.io.tool_output(f"Error: Command {cmd_name} not found.")
-            return
+            return None
 
         try:
             return cmd_method(args)
         except ANY_GIT_ERROR as err:
             self.io.tool_error(f"Unable to complete {cmd_name}: {err}")
+            return None
 
-    def matching_commands(self, inp):
+    def matching_commands(self, inp: str) -> Optional[tuple]:
         words = inp.strip().split()
         if not words:
-            return
+            return None
 
         first_word = words[0]
         rest_inp = inp[len(words[0]) :].strip()
@@ -309,14 +314,14 @@ class Commands:
         matching_commands = [cmd for cmd in all_commands if cmd.startswith(first_word)]
         return matching_commands, first_word, rest_inp
 
-    def run(self, inp):
+    def run(self, inp: str) -> Optional[Any]:
         if inp.startswith("!"):
             self.coder.event("command_run")
             return self.do_run("run", inp[1:])
 
         res = self.matching_commands(inp)
         if res is None:
-            return
+            return None
         matching_commands, first_word, rest_inp = res
         if len(matching_commands) == 1:
             command = matching_commands[0][1:]
@@ -328,20 +333,22 @@ class Commands:
             return self.do_run(command, rest_inp)
         elif len(matching_commands) > 1:
             self.io.tool_error(f"Ambiguous command: {', '.join(matching_commands)}")
+            return None
         else:
             self.io.tool_error(f"Invalid command: {first_word}")
+            return None
 
     # any method called cmd_xxx becomes a command automatically.
     # each one must take an args param.
 
-    def cmd_commit(self, args=None):
+    def cmd_commit(self, args: Optional[str] = None) -> None:
         "Commit edits to the repo made outside the chat (commit message optional)"
         try:
             self.raw_cmd_commit(args)
         except ANY_GIT_ERROR as err:
             self.io.tool_error(f"Unable to complete commit: {err}")
 
-    def raw_cmd_commit(self, args=None):
+    def raw_cmd_commit(self, args: Optional[str] = None) -> None:
         if not self.coder.repo:
             self.io.tool_error("No git repository found.")
             return
@@ -353,7 +360,7 @@ class Commands:
         commit_message = args.strip() if args else None
         self.coder.repo.commit(message=commit_message, coder=self.coder)
 
-    def cmd_lint(self, args="", fnames=None):
+    def cmd_lint(self, args: str = "", fnames: Optional[list] = None) -> None:
         "Lint and fix in-chat files or all dirty files if none in chat"
 
         if not self.coder.repo:
@@ -408,13 +415,13 @@ class Commands:
         if lint_coder and self.coder.repo.is_dirty() and self.coder.auto_commits:
             self.cmd_commit("")
 
-    def cmd_clear(self, args):
+    def cmd_clear(self, args: str) -> None:
         "Clear the chat history"
 
         self._clear_chat_history()
         self.io.tool_output("All chat history cleared.")
 
-    def _drop_all_files(self):
+    def _drop_all_files(self) -> None:
         self.coder.abs_fnames = set()
 
         # When dropping all files, keep those that were originally provided via args.read
@@ -432,17 +439,17 @@ class Commands:
         else:
             self.coder.abs_read_only_fnames = set()
 
-    def _clear_chat_history(self):
+    def _clear_chat_history(self) -> None:
         self.coder.done_messages = []
         self.coder.cur_messages = []
 
-    def cmd_reset(self, args):
+    def cmd_reset(self, args: str) -> None:
         "Drop all files and clear the chat history"
         self._drop_all_files()
         self._clear_chat_history()
         self.io.tool_output("All files dropped and chat history cleared.")
 
-    def cmd_tokens(self, args):
+    def cmd_tokens(self, args: str) -> None:
         "Report on the number of tokens used by the current chat context"
 
         res = []
@@ -550,14 +557,14 @@ class Commands:
             )
         self.io.tool_output(f"{cost_pad}{fmt(limit)} tokens max context window size")
 
-    def cmd_undo(self, args):
+    def cmd_undo(self, args: str) -> Optional[str]:
         "Undo the last git commit if it was done by aider"
         try:
             self.raw_cmd_undo(args)
         except ANY_GIT_ERROR as err:
             self.io.tool_error(f"Unable to complete undo: {err}")
 
-    def raw_cmd_undo(self, args):
+    def raw_cmd_undo(self, args: str) -> Optional[str]:
         if not self.coder.repo:
             self.io.tool_error("No git repository found.")
             return
@@ -654,14 +661,14 @@ class Commands:
         if self.coder.main_model.send_undo_reply:
             return prompts.undo_command_reply
 
-    def cmd_diff(self, args=""):
+    def cmd_diff(self, args: str = "") -> None:
         "Display the diff of changes since the last message"
         try:
             self.raw_cmd_diff(args)
         except ANY_GIT_ERROR as err:
             self.io.tool_error(f"Unable to complete diff: {err}")
 
-    def raw_cmd_diff(self, args=""):
+    def raw_cmd_diff(self, args: str = "") -> None:
         if not self.coder.repo:
             self.io.tool_error("No git repository found.")
             return
@@ -694,7 +701,7 @@ class Commands:
 
         self.io.print(diff)
 
-    def quote_fname(self, fname):
+    def quote_fname(self, fname: str) -> str:
         if " " in fname and '"' not in fname:
             fname = f'"{fname}"'
         return fname
@@ -756,13 +763,13 @@ class Commands:
         for completion in sorted_completions:
             yield completion
 
-    def completions_add(self):
+    def completions_add(self) -> list:
         files = set(self.coder.get_all_relative_files())
         files = files - set(self.coder.get_inchat_relative_files())
         files = [self.quote_fname(fn) for fn in files]
         return files
 
-    def glob_filtered_to_repo(self, pattern):
+    def glob_filtered_to_repo(self, pattern: str) -> list:
         if not pattern.strip():
             return []
         try:
@@ -796,7 +803,7 @@ class Commands:
         res = list(map(str, matched_files))
         return res
 
-    def cmd_add(self, args):
+    def cmd_add(self, args: str) -> None:
         "Add files to the chat so aider can edit them or review them in detail"
 
         all_matched_files = set()
@@ -902,14 +909,14 @@ class Commands:
                     self.io.tool_output(f"Added {fname} to the chat")
                     self.coder.check_added_files()
 
-    def completions_drop(self):
+    def completions_drop(self) -> list:
         files = self.coder.get_inchat_relative_files()
         read_only_files = [self.coder.get_rel_fname(fn) for fn in self.coder.abs_read_only_fnames]
         all_files = files + read_only_files
         all_files = [self.quote_fname(fn) for fn in all_files]
         return all_files
 
-    def cmd_drop(self, args=""):
+    def cmd_drop(self, args: str = "") -> None:
         "Remove files from the chat session to free up context space"
 
         if not args.strip():
@@ -964,7 +971,7 @@ class Commands:
                     self.coder.abs_fnames.remove(abs_fname)
                     self.io.tool_output(f"Removed {matched_file} from the chat")
 
-    def cmd_git(self, args):
+    def cmd_git(self, args: str) -> None:
         "Run a git command (output excluded from chat)"
         combined_output = None
         try:
@@ -990,7 +997,7 @@ class Commands:
 
         self.io.tool_output(combined_output)
 
-    def cmd_test(self, args):
+    def cmd_test(self, args: str) -> Optional[Union[str, Any]]:
         "Run a shell command and add the output to the chat on non-zero exit code"
         if not args and self.coder.test_cmd:
             args = self.coder.test_cmd
@@ -1010,7 +1017,7 @@ class Commands:
         self.io.tool_output(errors)
         return errors
 
-    def cmd_run(self, args, add_on_nonzero_exit=False):
+    def cmd_run(self, args: str, add_on_nonzero_exit: bool = False) -> Optional[str]:
         "Run a shell command and optionally add the output to the chat (alias: !)"
         exit_status, combined_output = run_cmd(
             args, verbose=self.verbose, error_print=self.io.tool_error, cwd=self.coder.root
@@ -1052,16 +1059,16 @@ class Commands:
         # Return None if output wasn't added or command succeeded
         return None
 
-    def cmd_exit(self, args):
+    def cmd_exit(self, args: str) -> None:
         "Exit the application"
         self.coder.event("exit", reason="/exit")
         sys.exit()
 
-    def cmd_quit(self, args):
+    def cmd_quit(self, args: str) -> None:
         "Exit the application"
         self.cmd_exit(args)
 
-    def cmd_ls(self, args):
+    def cmd_ls(self, args: str) -> None:
         "List all known files and indicate which are included in the chat session"
 
         files = self.coder.get_all_relative_files()
@@ -1100,7 +1107,7 @@ class Commands:
         for file in chat_files:
             self.io.tool_output(f"  {file}")
 
-    def basic_help(self):
+    def basic_help(self) -> None:
         commands = sorted(self.get_commands())
         pad = max(len(cmd) for cmd in commands)
         pad = "{cmd:" + str(pad) + "}"
@@ -1116,7 +1123,7 @@ class Commands:
         self.io.tool_output()
         self.io.tool_output("Use `/help <question>` to ask questions about how to use aider.")
 
-    def cmd_help(self, args):
+    def cmd_help(self, args: str) -> None:
         "Ask questions about aider"
 
         if not args.strip():
@@ -1167,35 +1174,35 @@ class Commands:
             show_announcements=False,
         )
 
-    def completions_ask(self):
+    def completions_ask(self) -> None:
         raise CommandCompletionException()
 
-    def completions_code(self):
+    def completions_code(self) -> None:
         raise CommandCompletionException()
 
-    def completions_architect(self):
+    def completions_architect(self) -> None:
         raise CommandCompletionException()
 
-    def completions_context(self):
+    def completions_context(self) -> None:
         raise CommandCompletionException()
 
-    def cmd_ask(self, args):
+    def cmd_ask(self, args: str) -> None:
         """Ask questions about the code base without editing any files. If no prompt provided, switches to ask mode."""  # noqa
         return self._generic_chat_command(args, "ask")
 
-    def cmd_code(self, args):
+    def cmd_code(self, args: str) -> None:
         """Ask for changes to your code. If no prompt provided, switches to code mode."""  # noqa
         return self._generic_chat_command(args, self.coder.main_model.edit_format)
 
-    def cmd_architect(self, args):
+    def cmd_architect(self, args: str) -> None:
         """Enter architect/editor mode using 2 different models. If no prompt provided, switches to architect/editor mode."""  # noqa
         return self._generic_chat_command(args, "architect")
 
-    def cmd_context(self, args):
+    def cmd_context(self, args: str) -> None:
         """Enter context mode to see surrounding code context. If no prompt provided, switches to context mode."""  # noqa
         return self._generic_chat_command(args, "context", placeholder=args.strip() or None)
 
-    def cmd_ok(self, args):
+    def cmd_ok(self, args: str) -> None:
         "Alias for `/code Ok, please go ahead and make those changes.` (any args are appended)"
         msg = "Ok, please go ahead and make those changes."
         extra = (args or "").strip()
@@ -1203,7 +1210,7 @@ class Commands:
             msg = f"{msg} {extra}"
         return self.cmd_code(msg)
 
-    def _generic_chat_command(self, args, edit_format, placeholder=None):
+    def _generic_chat_command(self, args: str, edit_format: str, placeholder: Optional[str] = None) -> None:
         if not args.strip():
             # Switch to the corresponding chat mode if no args provided
             return self.cmd_chat_mode(edit_format)
@@ -1229,7 +1236,7 @@ class Commands:
             placeholder=placeholder,
         )
 
-    def get_help_md(self):
+    def get_help_md(self) -> str:
         "Show help about all commands in markdown"
 
         res = """
@@ -1249,7 +1256,7 @@ class Commands:
         res += "\n"
         return res
 
-    def cmd_voice(self, args):
+    def cmd_voice(self, args: str) -> None:
         "Record and transcribe voice input"
 
         if not self.voice:
@@ -1275,7 +1282,7 @@ class Commands:
         if text:
             self.io.placeholder = text
 
-    def cmd_paste(self, args):
+    def cmd_paste(self, args: str) -> Optional[str]:
         """Paste image/text from the clipboard into the chat.\
         Optionally provide a name for the image."""
         try:
@@ -1325,7 +1332,7 @@ class Commands:
         except Exception as e:
             self.io.tool_error(f"Error processing clipboard content: {e}")
 
-    def cmd_read_only(self, args):
+    def cmd_read_only(self, args: str) -> None:
         "Add files to the chat that are for reference only, or turn added files to read-only"
         if not args.strip():
             # Convert all files in chat to read-only
@@ -1375,7 +1382,7 @@ class Commands:
             else:
                 self.io.tool_error(f"Not a file or directory: {abs_path}")
 
-    def _add_read_only_file(self, abs_path, original_name):
+    def _add_read_only_file(self, abs_path: str, original_name: Path) -> None:
         if is_image_file(original_name) and not self.coder.main_model.info.get("supports_vision"):
             self.io.tool_error(
                 f"Cannot add image file {original_name} as the"
@@ -1396,7 +1403,7 @@ class Commands:
             self.coder.abs_read_only_fnames.add(abs_path)
             self.io.tool_output(f"Added {original_name} to read-only files.")
 
-    def _add_read_only_directory(self, abs_path, original_name):
+    def _add_read_only_directory(self, abs_path: str, original_name: Path) -> None:
         added_files = 0
         for root, _, files in os.walk(abs_path):
             for file in files:
@@ -1415,7 +1422,7 @@ class Commands:
         else:
             self.io.tool_output(f"No new files added from directory {original_name}.")
 
-    def cmd_map(self, args):
+    def cmd_map(self, args: str) -> None:
         "Print out the current repository map"
         repo_map = self.coder.get_repo_map()
         if repo_map:
@@ -1423,13 +1430,13 @@ class Commands:
         else:
             self.io.tool_output("No repository map available.")
 
-    def cmd_map_refresh(self, args):
+    def cmd_map_refresh(self, args: str) -> None:
         "Force a refresh of the repository map"
         repo_map = self.coder.get_repo_map(force_refresh=True)
         if repo_map:
             self.io.tool_output("The repo map has been refreshed, use /map to view it.")
 
-    def cmd_settings(self, args):
+    def cmd_settings(self, args: str) -> None:
         "Print out the current settings"
         settings = format_settings(self.parser, self.args)
         announcements = "\n".join(self.coder.get_announcements())
@@ -1462,7 +1469,7 @@ class Commands:
     def completions_raw_load(self, document, complete_event):
         return self.completions_raw_read_only(document, complete_event)
 
-    def cmd_load(self, args):
+    def cmd_load(self, args: str) -> None:
         "Load and execute commands from a file"
         if not args.strip():
             self.io.tool_error("Please provide a filename containing commands to load.")
@@ -1494,7 +1501,7 @@ class Commands:
     def completions_raw_save(self, document, complete_event):
         return self.completions_raw_read_only(document, complete_event)
 
-    def cmd_save(self, args):
+    def cmd_save(self, args: str) -> None:
         "Save commands to a file that can reconstruct the current chat session's files"
         if not args.strip():
             self.io.tool_error("Please provide a filename to save the commands to.")
@@ -1521,11 +1528,11 @@ class Commands:
         except Exception as e:
             self.io.tool_error(f"Error saving commands to file: {e}")
 
-    def cmd_multiline_mode(self, args):
+    def cmd_multiline_mode(self, args: str) -> None:
         "Toggle multiline mode (swaps behavior of Enter and Meta+Enter)"
         self.io.toggle_multiline_mode()
 
-    def cmd_copy(self, args):
+    def cmd_copy(self, args: str) -> None:
         "Copy the last assistant message to the clipboard"
         all_messages = self.coder.done_messages + self.coder.cur_messages
         assistant_messages = [msg for msg in reversed(all_messages) if msg["role"] == "assistant"]
@@ -1552,7 +1559,7 @@ class Commands:
         except Exception as e:
             self.io.tool_error(f"An unexpected error occurred while copying to clipboard: {str(e)}")
 
-    def cmd_report(self, args):
+    def cmd_report(self, args: str) -> None:
         "Report a problem by opening a GitHub Issue"
         from aider.report import report_github_issue
 
@@ -1566,18 +1573,18 @@ class Commands:
 
         report_github_issue(issue_text, title=title, confirm=False)
 
-    def cmd_editor(self, initial_content=""):
+    def cmd_editor(self, initial_content: str = "") -> None:
         "Open an editor to write a prompt"
 
         user_input = pipe_editor(initial_content, suffix="md", editor=self.editor)
         if user_input.strip():
             self.io.set_placeholder(user_input.rstrip())
 
-    def cmd_edit(self, args=""):
+    def cmd_edit(self, args: str = "") -> None:
         "Alias for /editor: Open an editor to write a prompt"
         return self.cmd_editor(args)
 
-    def cmd_think_tokens(self, args):
+    def cmd_think_tokens(self, args: str) -> None:
         """Set the thinking token budget, eg: 8096, 8k, 10.5k, 0.5M, or 0 to disable."""
         model = self.coder.main_model
 
@@ -1612,7 +1619,7 @@ class Commands:
         announcements = "\n".join(self.coder.get_announcements())
         self.io.tool_output(announcements)
 
-    def cmd_reasoning_effort(self, args):
+    def cmd_reasoning_effort(self, args: str) -> None:
         "Set the reasoning effort level (values: number or low/medium/high depending on model)"
         model = self.coder.main_model
 
@@ -1635,7 +1642,7 @@ class Commands:
         announcements = "\n".join(self.coder.get_announcements())
         self.io.tool_output(announcements)
 
-    def cmd_copy_context(self, args=None):
+    def cmd_copy_context(self, args: Optional[str] = None) -> None:
         """Copy the current chat context as markdown, suitable to paste into a web UI"""
 
         chunks = self.coder.format_chat_chunks()
@@ -1680,7 +1687,7 @@ Just show me the edits I need to make.
             self.io.tool_error(f"An unexpected error occurred while copying to clipboard: {str(e)}")
 
 
-def expand_subdir(file_path):
+def expand_subdir(file_path: Path) -> Any:
     if file_path.is_file():
         yield file_path
         return
@@ -1691,18 +1698,18 @@ def expand_subdir(file_path):
                 yield file
 
 
-def parse_quoted_filenames(args):
+def parse_quoted_filenames(args: str) -> list:
     filenames = re.findall(r"\"(.+?)\"|(\S+)", args)
     filenames = [name for sublist in filenames for name in sublist if name]
     return filenames
 
 
-def get_help_md():
+def get_help_md() -> str:
     md = Commands(None, None).get_help_md()
     return md
 
 
-def main():
+def main() -> None:
     md = get_help_md()
     print(md)
 

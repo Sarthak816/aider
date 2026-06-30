@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import functools
 import os
@@ -11,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
+from typing import Any, Callable, Optional, TextIO, Union
 
 from prompt_toolkit.completion import Completer, Completion, ThreadedCompleter
 from prompt_toolkit.cursor_shapes import ModalCursorShapeConfig
@@ -43,7 +46,7 @@ from .utils import is_image_file
 NOTIFICATION_MESSAGE = "Aider is waiting for your input"
 
 
-def ensure_hash_prefix(color):
+def ensure_hash_prefix(color: Optional[str]) -> Optional[str]:
     """Ensure hex color values have a # prefix."""
     if not color:
         return color
@@ -54,7 +57,7 @@ def ensure_hash_prefix(color):
     return color
 
 
-def restore_multiline(func):
+def restore_multiline(func: Callable) -> Callable:
     """Decorator to restore multiline mode after function execution"""
 
     @functools.wraps(func)
@@ -83,14 +86,20 @@ class ConfirmGroup:
     preference: str = None
     show_group: bool = True
 
-    def __init__(self, items=None):
+    def __init__(self, items: Optional[list] = None):
         if items is not None:
             self.show_group = len(items) > 1
 
 
 class AutoCompleter(Completer):
     def __init__(
-        self, root, rel_fnames, addable_rel_fnames, commands, encoding, abs_read_only_fnames=None
+        self,
+        root: str,
+        rel_fnames: list,
+        addable_rel_fnames: list,
+        commands: Optional[Any],
+        encoding: str,
+        abs_read_only_fnames: Optional[list] = None,
     ):
         self.addable_rel_fnames = addable_rel_fnames
         self.rel_fnames = rel_fnames
@@ -124,7 +133,7 @@ class AutoCompleter(Completer):
         self.all_fnames = all_fnames
         self.tokenized = False
 
-    def tokenize(self):
+    def tokenize(self) -> None:
         if self.tokenized:
             return
         self.tokenized = True
@@ -228,42 +237,42 @@ class AutoCompleter(Completer):
 
 
 class InputOutput:
-    num_error_outputs = 0
-    num_user_asks = 0
-    clipboard_watcher = None
-    bell_on_next_input = False
-    notifications_command = None
+    num_error_outputs: int = 0
+    num_user_asks: int = 0
+    clipboard_watcher: Optional[Any] = None
+    bell_on_next_input: bool = False
+    notifications_command: Optional[str] = None
 
     def __init__(
         self,
-        pretty=True,
-        yes=None,
-        input_history_file=None,
-        chat_history_file=None,
-        input=None,
-        output=None,
-        user_input_color="blue",
-        tool_output_color=None,
-        tool_error_color="red",
-        tool_warning_color="#FFA500",
-        assistant_output_color="blue",
-        completion_menu_color=None,
-        completion_menu_bg_color=None,
-        completion_menu_current_color=None,
-        completion_menu_current_bg_color=None,
-        code_theme="default",
-        encoding="utf-8",
-        line_endings="platform",
-        dry_run=False,
-        llm_history_file=None,
-        editingmode=EditingMode.EMACS,
-        fancy_input=True,
-        file_watcher=None,
-        multiline_mode=False,
-        root=".",
-        notifications=False,
-        notifications_command=None,
-    ):
+        pretty: bool = True,
+        yes: Optional[Union[bool, str]] = None,
+        input_history_file: Optional[str] = None,
+        chat_history_file: Optional[str] = None,
+        input: Optional[TextIO] = None,
+        output: Optional[TextIO] = None,
+        user_input_color: Optional[str] = "blue",
+        tool_output_color: Optional[str] = None,
+        tool_error_color: Optional[str] = "red",
+        tool_warning_color: Optional[str] = "#FFA500",
+        assistant_output_color: Optional[str] = "blue",
+        completion_menu_color: Optional[str] = None,
+        completion_menu_bg_color: Optional[str] = None,
+        completion_menu_current_color: Optional[str] = None,
+        completion_menu_current_bg_color: Optional[str] = None,
+        code_theme: str = "default",
+        encoding: str = "utf-8",
+        line_endings: str = "platform",
+        dry_run: bool = False,
+        llm_history_file: Optional[str] = None,
+        editingmode: EditingMode = EditingMode.EMACS,
+        fancy_input: bool = True,
+        file_watcher: Optional[Any] = None,
+        multiline_mode: bool = False,
+        root: str = ".",
+        notifications: bool = False,
+        notifications_command: Optional[str] = None,
+    ) -> None:
         self.placeholder = None
         self.interrupted = False
         self.never_prompts = set()
@@ -371,7 +380,7 @@ class InputOutput:
         # Validate color settings after console is initialized
         self._validate_color_settings()
 
-    def _validate_color_settings(self):
+    def _validate_color_settings(self) -> None:
         """Validate configured color strings and reset invalid ones."""
         color_attributes = [
             "user_input_color",
@@ -397,7 +406,7 @@ class InputOutput:
                     )
                     setattr(self, attr_name, None)  # Reset invalid color to None
 
-    def _get_style(self):
+    def _get_style(self) -> Style:
         style_dict = {}
         if not self.pretty:
             return Style.from_dict(style_dict)
@@ -432,25 +441,25 @@ class InputOutput:
 
         return Style.from_dict(style_dict)
 
-    def read_image(self, filename):
+    def read_image(self, filename: Union[str, Path]) -> Optional[str]:
         try:
             with open(str(filename), "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read())
                 return encoded_string.decode("utf-8")
         except OSError as err:
             self.tool_error(f"{filename}: unable to read: {err}")
-            return
+            return None
         except FileNotFoundError:
             self.tool_error(f"{filename}: file not found error")
-            return
+            return None
         except IsADirectoryError:
             self.tool_error(f"{filename}: is a directory")
-            return
+            return None
         except Exception as e:
             self.tool_error(f"{filename}: {e}")
-            return
+            return None
 
-    def read_text(self, filename, silent=False):
+    def read_text(self, filename: Union[str, Path], silent: bool = False) -> Optional[str]:
         if is_image_file(filename):
             return self.read_image(filename)
 
@@ -460,22 +469,24 @@ class InputOutput:
         except FileNotFoundError:
             if not silent:
                 self.tool_error(f"{filename}: file not found error")
-            return
+            return None
         except IsADirectoryError:
             if not silent:
                 self.tool_error(f"{filename}: is a directory")
-            return
+            return None
         except OSError as err:
             if not silent:
                 self.tool_error(f"{filename}: unable to read: {err}")
-            return
+            return None
         except UnicodeError as e:
             if not silent:
                 self.tool_error(f"{filename}: {e}")
                 self.tool_error("Use --encoding to set the unicode encoding.")
-            return
+            return None
 
-    def write_text(self, filename, content, max_retries=5, initial_delay=0.1):
+    def write_text(
+        self, filename: Union[str, Path], content: str, max_retries: int = 5, initial_delay: float = 0.1
+    ) -> None:
         """
         Writes content to a file, retrying with progressive backoff if the file is locked.
 
@@ -506,14 +517,14 @@ class InputOutput:
                 self.tool_error(f"Unable to write file {filename}: {err}")
                 raise
 
-    def rule(self):
+    def rule(self) -> None:
         if self.pretty:
             style = dict(style=self.user_input_color) if self.user_input_color else dict()
             self.console.rule(**style)
         else:
             print()
 
-    def interrupt_input(self):
+    def interrupt_input(self) -> None:
         if self.prompt_session and self.prompt_session.app:
             # Store any partial input before interrupting
             self.placeholder = self.prompt_session.app.current_buffer.text
@@ -522,13 +533,13 @@ class InputOutput:
 
     def get_input(
         self,
-        root,
-        rel_fnames,
-        addable_rel_fnames,
-        commands,
-        abs_read_only_fnames=None,
-        edit_format=None,
-    ):
+        root: str,
+        rel_fnames: set,
+        addable_rel_fnames: list,
+        commands: Optional[Any],
+        abs_read_only_fnames: Optional[list] = None,
+        edit_format: Optional[str] = None,
+    ) -> Optional[str]:
         self.rule()
 
         # Ring the bell if needed
@@ -733,7 +744,7 @@ class InputOutput:
         self.user_input(inp)
         return inp
 
-    def add_to_input_history(self, inp):
+    def add_to_input_history(self, inp: str) -> None:
         if not self.input_history_file:
             return
         try:
@@ -744,14 +755,14 @@ class InputOutput:
         except OSError as err:
             self.tool_warning(f"Unable to write to input history file: {err}")
 
-    def get_input_history(self):
+    def get_input_history(self) -> list:
         if not self.input_history_file:
             return []
 
         fh = FileHistory(self.input_history_file)
         return fh.load_history_strings()
 
-    def log_llm_history(self, role, content):
+    def log_llm_history(self, role: str, content: str) -> None:
         if not self.llm_history_file:
             return
         timestamp = datetime.now().isoformat(timespec="seconds")
@@ -764,7 +775,7 @@ class InputOutput:
             self.tool_warning(f"Unable to write to llm history file {self.llm_history_file}: {err}")
             self.llm_history_file = None
 
-    def display_user_input(self, inp):
+    def display_user_input(self, inp: str) -> None:
         if self.pretty and self.user_input_color:
             style = dict(style=self.user_input_color)
         else:
@@ -772,7 +783,7 @@ class InputOutput:
 
         self.console.print(Text(inp), **style)
 
-    def user_input(self, inp, log_only=True):
+    def user_input(self, inp: str, log_only: bool = True) -> None:
         if not log_only:
             self.display_user_input(inp)
 
@@ -790,11 +801,11 @@ class InputOutput:
 
     # OUTPUT
 
-    def ai_output(self, content):
+    def ai_output(self, content: str) -> None:
         hist = "\n" + content.strip() + "\n\n"
         self.append_chat_history(hist)
 
-    def offer_url(self, url, prompt="Open URL for more info?", allow_never=True):
+    def offer_url(self, url: str, prompt: str = "Open URL for more info?", allow_never: bool = True) -> bool:
         """Offer to open a URL in the browser, returns True if opened."""
         if url in self.never_prompts:
             return False
@@ -806,13 +817,13 @@ class InputOutput:
     @restore_multiline
     def confirm_ask(
         self,
-        question,
-        default="y",
-        subject=None,
-        explicit_yes_required=False,
-        group=None,
-        allow_never=False,
-    ):
+        question: str,
+        default: str = "y",
+        subject: Optional[str] = None,
+        explicit_yes_required: bool = False,
+        group: Optional[ConfirmGroup] = None,
+        allow_never: bool = False,
+    ) -> bool:
         self.num_user_asks += 1
 
         # Ring the bell if needed
@@ -925,7 +936,7 @@ class InputOutput:
         return is_yes
 
     @restore_multiline
-    def prompt_ask(self, question, default="", subject=None):
+    def prompt_ask(self, question: str, default: str = "", subject: Optional[str] = None) -> str:
         self.num_user_asks += 1
 
         # Ring the bell if needed
@@ -963,7 +974,7 @@ class InputOutput:
 
         return res
 
-    def _tool_message(self, message="", strip=True, color=None):
+    def _tool_message(self, message: Union[str, Text] = "", strip: bool = True, color: Optional[str] = None) -> None:
         if message.strip():
             if "\n" in message:
                 for line in message.splitlines():
@@ -985,14 +996,14 @@ class InputOutput:
             message = str(message).encode("ascii", errors="replace").decode("ascii")
             self.console.print(message, **style)
 
-    def tool_error(self, message="", strip=True):
+    def tool_error(self, message: Union[str, Text] = "", strip: bool = True) -> None:
         self.num_error_outputs += 1
         self._tool_message(message, strip, self.tool_error_color)
 
-    def tool_warning(self, message="", strip=True):
+    def tool_warning(self, message: Union[str, Text] = "", strip: bool = True) -> None:
         self._tool_message(message, strip, self.tool_warning_color)
 
-    def tool_output(self, *messages, log_only=False, bold=False):
+    def tool_output(self, *messages: str, log_only: bool = False, bold: bool = False) -> None:
         if messages:
             hist = " ".join(messages)
             hist = f"{hist.strip()}"
@@ -1011,7 +1022,7 @@ class InputOutput:
         style = RichStyle(**style)
         self.console.print(*messages, style=style)
 
-    def get_assistant_mdstream(self):
+    def get_assistant_mdstream(self) -> MarkdownStream:
         mdargs = dict(
             style=self.assistant_output_color,
             code_theme=self.code_theme,
@@ -1020,7 +1031,7 @@ class InputOutput:
         mdStream = MarkdownStream(mdargs=mdargs)
         return mdStream
 
-    def assistant_output(self, message, pretty=None):
+    def assistant_output(self, message: str, pretty: Optional[bool] = None) -> None:
         if not message:
             self.tool_warning("Empty response received from LLM. Check your provider account?")
             return
@@ -1040,18 +1051,18 @@ class InputOutput:
 
         self.console.print(show_resp)
 
-    def set_placeholder(self, placeholder):
+    def set_placeholder(self, placeholder: Optional[str]) -> None:
         """Set a one-time placeholder text for the next input prompt."""
         self.placeholder = placeholder
 
-    def print(self, message=""):
+    def print(self, message: str = "") -> None:
         print(message)
 
-    def llm_started(self):
+    def llm_started(self) -> None:
         """Mark that the LLM has started processing, so we should ring the bell on next input"""
         self.bell_on_next_input = True
 
-    def get_default_notification_command(self):
+    def get_default_notification_command(self) -> Optional[str]:
         """Return a default notification command based on the operating system."""
         import platform
 
@@ -1085,7 +1096,7 @@ class InputOutput:
 
         return None  # Unknown system
 
-    def ring_bell(self):
+    def ring_bell(self) -> None:
         """Ring the terminal bell if needed and clear the flag"""
         if self.bell_on_next_input and self.notifications:
             if self.notifications_command:
@@ -1102,7 +1113,7 @@ class InputOutput:
                 print("\a", end="", flush=True)  # Ring the bell
             self.bell_on_next_input = False  # Clear the flag
 
-    def toggle_multiline_mode(self):
+    def toggle_multiline_mode(self) -> None:
         """Toggle between normal and multiline input modes"""
         self.multiline_mode = not self.multiline_mode
         if self.multiline_mode:
@@ -1114,7 +1125,7 @@ class InputOutput:
                 "Multiline mode: Disabled. Alt-Enter inserts newline, Enter submits text"
             )
 
-    def append_chat_history(self, text, linebreak=False, blockquote=False, strip=True):
+    def append_chat_history(self, text: str, linebreak: bool = False, blockquote: bool = False, strip: bool = True) -> None:
         if blockquote:
             if strip:
                 text = text.strip()
@@ -1135,7 +1146,7 @@ class InputOutput:
                 print(err)
                 self.chat_history_file = None  # Disable further attempts to write
 
-    def format_files_for_input(self, rel_fnames, rel_read_only_fnames):
+    def format_files_for_input(self, rel_fnames: list, rel_read_only_fnames: list) -> str:
         if not self.pretty:
             read_only_files = []
             for full_path in sorted(rel_read_only_fnames or []):
@@ -1184,7 +1195,7 @@ class InputOutput:
         return output.getvalue()
 
 
-def get_rel_fname(fname, root):
+def get_rel_fname(fname: str, root: str) -> str:
     try:
         return os.path.relpath(fname, root)
     except ValueError:

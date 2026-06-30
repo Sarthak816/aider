@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import difflib
 import hashlib
 import importlib.resources
@@ -10,7 +12,7 @@ import time
 from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import json5
 import yaml
@@ -163,9 +165,9 @@ class ModelInfoManager:
         "https://raw.githubusercontent.com/BerriAI/litellm/main/"
         "model_prices_and_context_window.json"
     )
-    CACHE_TTL = 60 * 60 * 24  # 24 hours
+    CACHE_TTL: int = 60 * 60 * 24  # 24 hours
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.cache_dir = Path.home() / ".aider" / "caches"
         self.cache_file = self.cache_dir / "model_prices_and_context_window.json"
         self.content = None
@@ -176,12 +178,12 @@ class ModelInfoManager:
         # Manager for the cached OpenRouter model database
         self.openrouter_manager = OpenRouterModelManager()
 
-    def set_verify_ssl(self, verify_ssl):
+    def set_verify_ssl(self, verify_ssl: bool) -> None:
         self.verify_ssl = verify_ssl
         if hasattr(self, "openrouter_manager"):
             self.openrouter_manager.set_verify_ssl(verify_ssl)
 
-    def _load_cache(self):
+    def _load_cache(self) -> None:
         if self._cache_loaded:
             return
 
@@ -200,7 +202,7 @@ class ModelInfoManager:
 
         self._cache_loaded = True
 
-    def _update_cache(self):
+    def _update_cache(self) -> None:
         try:
             import requests
 
@@ -220,7 +222,7 @@ class ModelInfoManager:
             except OSError:
                 pass
 
-    def get_model_from_cached_json_db(self, model):
+    def get_model_from_cached_json_db(self, model: str) -> dict:
         data = self.local_model_metadata.get(model)
         if data:
             return data
@@ -246,7 +248,7 @@ class ModelInfoManager:
 
         return dict()
 
-    def get_model_info(self, model):
+    def get_model_info(self, model: str) -> dict:
         cached_info = self.get_model_from_cached_json_db(model)
 
         litellm_info = None
@@ -273,7 +275,7 @@ class ModelInfoManager:
 
         return cached_info
 
-    def fetch_openrouter_model_info(self, model):
+    def fetch_openrouter_model_info(self, model: str) -> dict:
         """
         Fetch model info by scraping the openrouter model page.
         Expected URL: https://openrouter.ai/<model_route>
@@ -323,13 +325,18 @@ class ModelInfoManager:
             return {}
 
 
-model_info_manager = ModelInfoManager()
+model_info_manager: ModelInfoManager = ModelInfoManager()
 
 
 class Model(ModelSettings):
     def __init__(
-        self, model, weak_model=None, editor_model=None, editor_edit_format=None, verbose=False
-    ):
+        self,
+        model: str,
+        weak_model: Optional[Union[str, bool]] = None,
+        editor_model: Optional[Union[str, bool]] = None,
+        editor_edit_format: Optional[str] = None,
+        verbose: bool = False,
+    ) -> None:
         # Map any alias to its canonical name
         model = MODEL_ALIASES.get(model, model)
 
@@ -368,10 +375,10 @@ class Model(ModelSettings):
         else:
             self.get_editor_model(editor_model, editor_edit_format)
 
-    def get_model_info(self, model):
+    def get_model_info(self, model: str) -> dict:
         return model_info_manager.get_model_info(model)
 
-    def _copy_fields(self, source):
+    def _copy_fields(self, source: ModelSettings) -> None:
         """Helper to copy fields from a ModelSettings instance to self"""
         for field in fields(ModelSettings):
             val = getattr(source, field.name)
@@ -382,7 +389,7 @@ class Model(ModelSettings):
         if self.reasoning_tag is None and self.remove_reasoning is not None:
             self.reasoning_tag = self.remove_reasoning
 
-    def configure_model_settings(self, model):
+    def configure_model_settings(self, model: str) -> None:
         # Look for exact model match
         exact_match = False
         for ms in MODEL_SETTINGS:
@@ -434,7 +441,7 @@ class Model(ModelSettings):
             if "reasoning_effort" not in self.accepts_settings:
                 self.accepts_settings.append("reasoning_effort")
 
-    def apply_generic_model_settings(self, model):
+    def apply_generic_model_settings(self, model: str) -> None:
         if "/o3-mini" in model:
             self.edit_format = "diff"
             self.use_repo_map = True
@@ -597,10 +604,10 @@ class Model(ModelSettings):
             self.use_repo_map = True
             return  # <--
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
-    def get_weak_model(self, provided_weak_model_name):
+    def get_weak_model(self, provided_weak_model_name: Optional[str]) -> Optional[Model]:
         # If weak_model_name is provided, override the model settings
         if provided_weak_model_name:
             self.weak_model_name = provided_weak_model_name
@@ -619,10 +626,10 @@ class Model(ModelSettings):
         )
         return self.weak_model
 
-    def commit_message_models(self):
+    def commit_message_models(self) -> list:
         return [self.weak_model, self]
 
-    def get_editor_model(self, provided_editor_model_name, editor_edit_format):
+    def get_editor_model(self, provided_editor_model_name: Optional[str], editor_edit_format: Optional[str]) -> Optional[Model]:
         # If editor_model_name is provided, override the model settings
         if provided_editor_model_name:
             self.editor_model_name = provided_editor_model_name
@@ -644,10 +651,10 @@ class Model(ModelSettings):
 
         return self.editor_model
 
-    def tokenizer(self, text):
+    def tokenizer(self, text: str) -> Any:
         return litellm.encode(model=self.name, text=text)
 
-    def token_count(self, messages):
+    def token_count(self, messages: Any) -> int:
         if type(messages) is list:
             try:
                 return litellm.token_counter(model=self.name, messages=messages)
@@ -656,7 +663,7 @@ class Model(ModelSettings):
                 return 0
 
         if not self.tokenizer:
-            return
+            return 0
 
         if type(messages) is str:
             msgs = messages
@@ -669,7 +676,7 @@ class Model(ModelSettings):
             print(f"Unable to count tokens: {err}")
             return 0
 
-    def token_count_for_image(self, fname):
+    def token_count_for_image(self, fname: str) -> int:
         """
         Calculate the token cost for an image assuming high detail.
         The token cost is determined by the size of the image.
@@ -700,7 +707,7 @@ class Model(ModelSettings):
         token_cost = num_tiles * 170 + 85
         return token_cost
 
-    def get_image_size(self, fname):
+    def get_image_size(self, fname: str) -> tuple:
         """
         Retrieve the size of an image.
         :param fname: The filename of the image.
@@ -709,7 +716,7 @@ class Model(ModelSettings):
         with Image.open(fname) as img:
             return img.size
 
-    def fast_validate_environment(self):
+    def fast_validate_environment(self) -> Optional[dict]:
         """Fast path for common models. Avoids forcing litellm import."""
 
         model = self.name
@@ -740,7 +747,7 @@ class Model(ModelSettings):
         if var and os.environ.get(var):
             return dict(keys_in_environment=[var], missing_keys=[])
 
-    def validate_environment(self):
+    def validate_environment(self) -> dict:
         res = self.fast_validate_environment()
         if res:
             return res
@@ -779,7 +786,7 @@ class Model(ModelSettings):
 
         return res
 
-    def get_repo_map_tokens(self):
+    def get_repo_map_tokens(self) -> int:
         map_tokens = 1024
         max_inp_tokens = self.info.get("max_input_tokens")
         if max_inp_tokens:
@@ -788,7 +795,7 @@ class Model(ModelSettings):
             map_tokens = max(map_tokens, 1024)
         return map_tokens
 
-    def set_reasoning_effort(self, effort):
+    def set_reasoning_effort(self, effort: str) -> None:
         """Set the reasoning effort parameter for models that support it"""
         if effort is not None:
             if self.name.startswith("openrouter/"):
@@ -804,7 +811,7 @@ class Model(ModelSettings):
                     self.extra_params["extra_body"] = {}
                 self.extra_params["extra_body"]["reasoning_effort"] = effort
 
-    def parse_token_value(self, value):
+    def parse_token_value(self, value: Union[str, int]) -> int:
         """
         Parse a token value string into an integer.
         Accepts formats: 8096, "8k", "10.5k", "0.5M", "10K", etc.
@@ -835,7 +842,7 @@ class Model(ModelSettings):
         # Convert to float first to handle decimal values like "10.5k"
         return int(float(value) * multiplier)
 
-    def set_thinking_tokens(self, value):
+    def set_thinking_tokens(self, value: Union[str, int]) -> None:
         """
         Set the thinking token budget for models that support it.
         Accepts formats: 8096, "8k", "10.5k", "0.5M", "10K", etc.
@@ -863,7 +870,7 @@ class Model(ModelSettings):
                     if "thinking" in self.extra_params:
                         del self.extra_params["thinking"]
 
-    def get_raw_thinking_tokens(self):
+    def get_raw_thinking_tokens(self) -> Optional[int]:
         """Get formatted thinking token budget if available"""
         budget = None
 
@@ -884,7 +891,7 @@ class Model(ModelSettings):
 
         return budget
 
-    def get_thinking_tokens(self):
+    def get_thinking_tokens(self) -> Optional[str]:
         budget = self.get_raw_thinking_tokens()
 
         if budget is not None:
@@ -903,7 +910,7 @@ class Model(ModelSettings):
                     return f"{value:.1f}k"
         return None
 
-    def get_reasoning_effort(self):
+    def get_reasoning_effort(self) -> Optional[str]:
         """Get reasoning effort value if available"""
         if self.extra_params:
             # Check for OpenRouter reasoning format
@@ -922,16 +929,16 @@ class Model(ModelSettings):
                 return self.extra_params["extra_body"]["reasoning_effort"]
         return None
 
-    def is_deepseek_r1(self):
+    def is_deepseek_r1(self) -> Optional[bool]:
         name = self.name.lower()
         if "deepseek" not in name:
-            return
+            return None
         return "r1" in name or "reasoner" in name
 
-    def is_ollama(self):
+    def is_ollama(self) -> bool:
         return self.name.startswith("ollama/") or self.name.startswith("ollama_chat/")
 
-    def github_copilot_token_to_open_ai_key(self, extra_headers):
+    def github_copilot_token_to_open_ai_key(self, extra_headers: dict) -> None:
         # check to see if there's an openai api key
         # If so, check to see if it's expire
         openai_api_key = "OPENAI_API_KEY"
@@ -982,7 +989,7 @@ class Model(ModelSettings):
 
             os.environ[openai_api_key] = token
 
-    def send_completion(self, messages, functions, stream, temperature=None):
+    def send_completion(self, messages: list, functions: Optional[list], stream: bool, temperature: Optional[float] = None) -> tuple:
         if os.environ.get("AIDER_SANITY_CHECK_TURNS"):
             sanity_check_messages(messages)
 
@@ -1036,7 +1043,7 @@ class Model(ModelSettings):
         res = litellm.completion(**kwargs)
         return hash_object, res
 
-    def simple_send_with_retries(self, messages):
+    def simple_send_with_retries(self, messages: list) -> Optional[str]:
         from aider.exceptions import LiteLLMExceptions
 
         litellm_ex = LiteLLMExceptions()
@@ -1082,7 +1089,7 @@ class Model(ModelSettings):
                 return None
 
 
-def register_models(model_settings_fnames):
+def register_models(model_settings_fnames: list) -> list:
     files_loaded = []
     for model_settings_fname in model_settings_fnames:
         if not os.path.exists(model_settings_fname):
@@ -1109,7 +1116,7 @@ def register_models(model_settings_fnames):
     return files_loaded
 
 
-def register_litellm_models(model_fnames):
+def register_litellm_models(model_fnames: list) -> list:
     files_loaded = []
     for model_fname in model_fnames:
         if not os.path.exists(model_fname):
@@ -1133,7 +1140,7 @@ def register_litellm_models(model_fnames):
     return files_loaded
 
 
-def validate_variables(vars):
+def validate_variables(vars: list) -> dict:
     missing = []
     for var in vars:
         if var not in os.environ:
@@ -1143,7 +1150,7 @@ def validate_variables(vars):
     return dict(keys_in_environment=True, missing_keys=missing)
 
 
-def sanity_check_models(io, main_model):
+def sanity_check_models(io, main_model: Model) -> bool:
     problem_main = sanity_check_model(io, main_model)
 
     problem_weak = None
@@ -1161,7 +1168,7 @@ def sanity_check_models(io, main_model):
     return problem_main or problem_weak or problem_editor
 
 
-def sanity_check_model(io, model):
+def sanity_check_model(io, model: Model) -> bool:
     show = False
 
     if model.missing_keys:
@@ -1200,7 +1207,7 @@ def sanity_check_model(io, model):
     return show
 
 
-def check_for_dependencies(io, model_name):
+def check_for_dependencies(io, model_name: str) -> None:
     """
     Check for model-specific dependencies and install them if needed.
 
@@ -1224,7 +1231,7 @@ def check_for_dependencies(io, model_name):
         )
 
 
-def fuzzy_match_models(name):
+def fuzzy_match_models(name: str) -> list:
     name = name.lower()
 
     chat_models = set()
@@ -1269,7 +1276,7 @@ def fuzzy_match_models(name):
     return sorted(set(matching_models))
 
 
-def print_matching_models(io, search):
+def print_matching_models(io, search: str) -> None:
     matches = fuzzy_match_models(search)
     if matches:
         io.tool_output(f'Models which match "{search}":')
@@ -1279,7 +1286,7 @@ def print_matching_models(io, search):
         io.tool_output(f'No models match "{search}".')
 
 
-def get_model_settings_as_yaml():
+def get_model_settings_as_yaml() -> str:
     from dataclasses import fields
 
     import yaml
@@ -1314,7 +1321,7 @@ def get_model_settings_as_yaml():
     return yaml_str.replace("\n- ", "\n\n- ")
 
 
-def main():
+def main() -> None:
     if len(sys.argv) < 2:
         print("Usage: python models.py <model_name> or python models.py --yaml")
         sys.exit(1)

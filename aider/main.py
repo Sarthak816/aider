@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -5,8 +7,10 @@ import sys
 import threading
 import traceback
 import webbrowser
+from argparse import Namespace
 from dataclasses import fields
 from pathlib import Path
+from typing import Any, Callable, Optional, TextIO, Union
 
 try:
     import git
@@ -40,7 +44,7 @@ from aider.watch import FileWatcher
 from .dump import dump  # noqa: F401
 
 
-def check_config_files_for_yes(config_files):
+def check_config_files_for_yes(config_files: list) -> bool:
     found = False
     for config_file in config_files:
         if Path(config_file).exists():
@@ -57,7 +61,7 @@ def check_config_files_for_yes(config_files):
     return found
 
 
-def get_git_root():
+def get_git_root() -> Optional[str]:
     """Try and guess the git repo, since the conf.yml can be at the repo root"""
     try:
         repo = git.Repo(search_parent_directories=True)
@@ -66,13 +70,15 @@ def get_git_root():
         return None
 
 
-def guessed_wrong_repo(io, git_root, fnames, git_dname):
+def guessed_wrong_repo(
+    io: InputOutput, git_root: Optional[str], fnames: list, git_dname: Optional[str]
+) -> Optional[str]:
     """After we parse the args, we can determine the real repo. Did we guess wrong?"""
 
     try:
         check_repo = Path(GitRepo(io, fnames, git_dname).root).resolve()
     except (OSError,) + ANY_GIT_ERROR:
-        return
+        return None
 
     # we had no guess, rely on the "true" repo result
     if not git_root:
@@ -80,27 +86,27 @@ def guessed_wrong_repo(io, git_root, fnames, git_dname):
 
     git_root = Path(git_root).resolve()
     if check_repo == git_root:
-        return
+        return None
 
     return str(check_repo)
 
 
-def make_new_repo(git_root, io):
+def make_new_repo(git_root: str, io: InputOutput) -> Optional[Any]:
     try:
         repo = git.Repo.init(git_root)
         check_gitignore(git_root, io, False)
     except ANY_GIT_ERROR as err:  # issue #1233
         io.tool_error(f"Unable to create git repo in {git_root}")
         io.tool_output(str(err))
-        return
+        return None
 
     io.tool_output(f"Git repository created in {git_root}")
     return repo
 
 
-def setup_git(git_root, io):
+def setup_git(git_root: Optional[str], io: InputOutput) -> Optional[str]:
     if git is None:
-        return
+        return None
 
     try:
         cwd = Path.cwd()
@@ -118,7 +124,7 @@ def setup_git(git_root, io):
         io.tool_warning(
             "You should probably run aider in your project's directory, not your home dir."
         )
-        return
+        return None
     elif cwd and io.confirm_ask(
         "No git repo found, create one to track aider's changes (recommended)?"
     ):
@@ -126,7 +132,7 @@ def setup_git(git_root, io):
         repo = make_new_repo(git_root, io)
 
     if not repo:
-        return
+        return None
 
     try:
         user_name = repo.git.config("--get", "user.name") or None
@@ -152,7 +158,7 @@ def setup_git(git_root, io):
     return repo.working_tree_dir
 
 
-def check_gitignore(git_root, io, ask=True):
+def check_gitignore(git_root: Optional[str], io: InputOutput, ask: bool = True) -> None:
     if not git_root:
         return
 
@@ -205,7 +211,7 @@ def check_gitignore(git_root, io, ask=True):
             io.tool_output(f"  {pattern}")
 
 
-def check_streamlit_install(io):
+def check_streamlit_install(io: InputOutput) -> bool:
     return utils.check_pip_install_extra(
         io,
         "streamlit",
@@ -214,7 +220,7 @@ def check_streamlit_install(io):
     )
 
 
-def write_streamlit_credentials():
+def write_streamlit_credentials() -> None:
     from streamlit.file_util import get_streamlit_file_path
 
     # See https://github.com/Aider-AI/aider/issues/772
@@ -230,7 +236,7 @@ def write_streamlit_credentials():
         print("Streamlit credentials already exist.")
 
 
-def launch_gui(args):
+def launch_gui(args: list) -> None:
     from streamlit.web import cli
 
     from aider import gui
@@ -275,7 +281,7 @@ def launch_gui(args):
     # sys.argv = ['streamlit', 'run', '--'] + args
 
 
-def parse_lint_cmds(lint_cmds, io):
+def parse_lint_cmds(lint_cmds: list, io: InputOutput) -> Optional[dict]:
     err = False
     res = dict()
     for lint_cmd in lint_cmds:
@@ -298,11 +304,13 @@ def parse_lint_cmds(lint_cmds, io):
             io.tool_output('For example: --lint-cmd "python: flake8 --select=E9"')
             err = True
     if err:
-        return
+        return None
     return res
 
 
-def generate_search_path_list(default_file, git_root, command_line_file):
+def generate_search_path_list(
+    default_file: str, git_root: Optional[str], command_line_file: Optional[str]
+) -> list:
     files = []
     files.append(Path.home() / default_file)  # homedir
     if git_root:
@@ -332,7 +340,9 @@ def generate_search_path_list(default_file, git_root, command_line_file):
     return files
 
 
-def register_models(git_root, model_settings_fname, io, verbose=False):
+def register_models(
+    git_root: Optional[str], model_settings_fname: Optional[str], io: InputOutput, verbose: bool = False
+) -> Optional[int]:
     model_settings_files = generate_search_path_list(
         ".aider.model.settings.yml", git_root, model_settings_fname
     )
@@ -358,7 +368,9 @@ def register_models(git_root, model_settings_fname, io, verbose=False):
     return None
 
 
-def load_dotenv_files(git_root, dotenv_fname, encoding="utf-8"):
+def load_dotenv_files(
+    git_root: Optional[str], dotenv_fname: Optional[str], encoding: str = "utf-8"
+) -> list:
     # Standard .env file search path
     dotenv_files = generate_search_path_list(
         ".env",
@@ -387,7 +399,9 @@ def load_dotenv_files(git_root, dotenv_fname, encoding="utf-8"):
     return loaded
 
 
-def register_litellm_models(git_root, model_metadata_fname, io, verbose=False):
+def register_litellm_models(
+    git_root: Optional[str], model_metadata_fname: Optional[str], io: InputOutput, verbose: bool = False
+) -> Optional[int]:
     model_metadata_files = []
 
     # Add the resource file path
@@ -409,7 +423,7 @@ def register_litellm_models(git_root, model_metadata_fname, io, verbose=False):
         return 1
 
 
-def sanity_check_repo(repo, io):
+def sanity_check_repo(repo: Optional[GitRepo], io: InputOutput) -> bool:
     if not repo:
         return True
 
@@ -448,7 +462,13 @@ def sanity_check_repo(repo, io):
     return False
 
 
-def main(argv=None, input=None, output=None, force_git_root=None, return_coder=False):
+def main(
+    argv: Optional[list] = None,
+    input: Optional[TextIO] = None,
+    output: Optional[TextIO] = None,
+    force_git_root: Optional[str] = None,
+    return_coder: bool = False,
+) -> Optional[Union[int, Any]]:
     report_uncaught_exceptions()
 
     if argv is None:
@@ -1180,7 +1200,7 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
                 coder.show_announcements()
 
 
-def is_first_run_of_new_version(io, verbose=False):
+def is_first_run_of_new_version(io: InputOutput, verbose: bool = False) -> bool:
     """Check if this is the first run of a new version/executable combination"""
     installs_file = Path.home() / ".aider" / "installs.json"
     key = (__version__, sys.executable)
@@ -1223,7 +1243,7 @@ def is_first_run_of_new_version(io, verbose=False):
         return True  # Safer to assume it's a first run if we hit an error
 
 
-def check_and_load_imports(io, is_first_run, verbose=False):
+def check_and_load_imports(io: InputOutput, is_first_run: bool, verbose: bool = False) -> None:
     try:
         if is_first_run:
             if verbose:
@@ -1253,7 +1273,7 @@ def check_and_load_imports(io, is_first_run, verbose=False):
             io.tool_output(f"Full exception details: {traceback.format_exc()}")
 
 
-def load_slow_imports(swallow=True):
+def load_slow_imports(swallow: bool = True) -> None:
     # These imports are deferred in various ways to
     # improve startup time.
     # This func is called either synchronously or in a thread
