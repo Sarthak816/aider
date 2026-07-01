@@ -1,5 +1,7 @@
 import os
 import platform
+import re
+import shlex
 import subprocess
 import sys
 from io import BytesIO
@@ -21,6 +23,20 @@ def run_cmd(command, verbose=False, error_print=None, cwd=None):
         else:
             error_print(error_message)
         return 1, error_message
+
+
+def _has_shell_operators(command_str):
+    """Check if a command string contains shell operators that require shell=True.
+
+    Detects pipes, redirects, command chaining, variable expansion, and
+    command substitution outside of quoted strings.
+    """
+    # Remove content inside single and double quotes
+    stripped = re.sub(r"'[^']*'|\"[^\"]*\"", "", command_str)
+    # Check for shell operators
+    return bool(
+        re.search(r"[|;&$`()]|&&|\|\||>>?|<<?", stripped)
+    )
 
 
 def get_windows_parent_process_name():
@@ -59,15 +75,24 @@ def run_cmd_subprocess(command, verbose=False, cwd=None, encoding=sys.stdout.enc
             if platform.system() == "Windows":
                 print("Parent process:", parent_process)
 
+        # Prefer list-based execution to avoid shell injection via shell=True
+        use_shell = _has_shell_operators(command)
+        if not use_shell:
+            try:
+                cmd_parts = shlex.split(command)
+            except ValueError:
+                use_shell = True
+
+        popen_args = command if use_shell else cmd_parts
         process = subprocess.Popen(
-            command,
+            popen_args,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            shell=True,
+            shell=use_shell,
             encoding=encoding,
             errors="replace",
-            bufsize=0,  # Set bufsize to 0 for unbuffered output
+            bufsize=0,
             universal_newlines=True,
             cwd=cwd,
         )
