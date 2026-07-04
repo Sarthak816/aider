@@ -529,6 +529,25 @@ class RepoMap:
                 ranked = nx.pagerank(G, weight="weight")
             except ZeroDivisionError:
                 return []
+        except (ImportError, OSError):
+            # Issue #5393: scipy binary incompatibility on some platforms (e.g. macOS)
+            # Fall back to networkx's pure-Python pagerank which doesn't require scipy
+            self.io.tool_warning(
+                "SciPy PageRank unavailable, falling back to pure Python implementation"
+            )
+            try:
+                ranked = (
+                    nx.algorithms.link_analysis.pagerank_alg._pagerank_python(
+                        G, weight="weight", **pers_args
+                    )
+                )
+            except (ImportError, OSError):
+                self.io.tool_warning(
+                    "Unable to compute repo map (scipy/numpy not available)"
+                )
+                return []
+            except ZeroDivisionError:
+                return []
 
         # distribute the rank from each source node, across all of its out edges
         ranked_definitions = defaultdict(float)
