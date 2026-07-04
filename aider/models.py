@@ -599,6 +599,17 @@ class Model(ModelSettings):
             self.extra_params = {"top_p": 0.8, "top_k": 20, "min_p": 0.0}
             return  # <--
 
+        # Ollama/local reasoning models that embed <think> tags in content
+        if self.is_ollama() and any(
+            kw in model for kw in ["qwq", "r1", "reasoning", "think", "deepseek", "qwen3"]
+        ):
+            self.edit_format = "diff"
+            self.use_repo_map = True
+            self.reasoning_tag = "think"
+            self.examples_as_sys_msg = True
+            self.use_temperature = 0.6
+            return  # <--
+
         # use the defaults
         if self.edit_format == "diff":
             self.use_repo_map = True

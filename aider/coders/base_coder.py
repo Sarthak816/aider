@@ -1879,6 +1879,11 @@ class Coder:
             self.io.tool_error(show_content_err)
             raise Exception("No data found in LLM response!")
 
+        # Normalize <think> tags from models that embed reasoning in content
+        self.partial_response_content = self._normalize_think_tags(
+            self.partial_response_content
+        )
+
         show_resp = self.render_incremental_response(True)
 
         if reasoning_content:
@@ -1953,6 +1958,9 @@ class Coder:
 
             if received_content:
                 self._stop_waiting_spinner()
+
+            # Normalize <think> tags from models that embed reasoning in content
+            text = self._normalize_think_tags(text)
             self.partial_response_content += text
 
             if self.show_pretty():
@@ -1983,8 +1991,23 @@ class Coder:
     def render_incremental_response(self, final):
         return self.get_multi_response_content_in_progress()
 
+    def _normalize_think_tags(self, text):
+        """
+        Convert raw <think> tags to the internal reasoning tag format.
+        Many Ollama/OpenAI-compatible models embed reasoning in the content
+        as <think> tags rather than using the reasoning_content field.
+        """
+        if self.reasoning_tag_name != "think":
+            text = re.sub(r"<think>", f"<{REASONING_TAG}>", text)
+            text = re.sub(r"</think>", f"</{REASONING_TAG}>", text)
+        return text
+
     def remove_reasoning_content(self):
         """Remove reasoning content from the model's response."""
+        # Normalize <think> tags from models that embed reasoning in content
+        self.partial_response_content = self._normalize_think_tags(
+            self.partial_response_content
+        )
 
         self.partial_response_content = remove_reasoning_content(
             self.partial_response_content,
