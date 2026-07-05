@@ -1158,6 +1158,8 @@ def main(
             message_from_file = io.read_text(args.message_file)
             io.tool_output()
             coder.run(with_message=message_from_file)
+        except SwitchCoder:
+            pass
         except FileNotFoundError:
             io.tool_error(f"Message file not found: {args.message_file}")
             analytics.event("exit", reason="Message file not found")
