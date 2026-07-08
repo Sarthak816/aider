@@ -17,7 +17,8 @@ def main():
     output_file = sys.argv[2]
 
     # Count total lines for progress bar
-    total_lines = sum(1 for _ in open(input_file, "r"))
+    with open(input_file, "r") as f:
+        total_lines = sum(1 for _ in f)
 
     with open(input_file, "r") as fin, open(output_file, "w") as fout:
         # Process header
