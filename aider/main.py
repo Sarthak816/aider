@@ -501,8 +501,17 @@ def main(
         args, unknown = parser.parse_known_args(argv)
     except AttributeError as e:
         if all(word in str(e) for word in ["bool", "object", "has", "no", "attribute", "strip"]):
-            if check_config_files_for_yes(default_config_files):
-                return 1
+            check_config_files_for_yes(default_config_files)
+            print()
+            print("Error reading configuration file(s).")
+            print("Your config file may contain unrecognized settings or values that YAML")
+            print("is parsing as booleans (like 'yes', 'no', 'true', 'false').")
+            print("Try quoting string values or removing unrecognized settings.")
+            print("Config files searched:")
+            for f in default_config_files:
+                exists = " (exists)" if Path(f).exists() else ""
+                print(f"  - {f}{exists}")
+            return 1
         raise e
 
     if args.verbose:
