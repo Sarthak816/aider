@@ -51,8 +51,8 @@ EXCEPTIONS = [
     ExInfo("UnsupportedParamsError", True, None),
     ExInfo(
         "Timeout",
-        True,
-        "The API provider timed out without returning a response. They may be down or overloaded.",
+        False,
+        "The API provider timed out without returning a response. They may be down or overloaded. Try increasing the timeout with --timeout or try again later.",
     ),
 ]
 
