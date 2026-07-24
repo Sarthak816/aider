@@ -618,7 +618,18 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     # Handle deprecated model shortcut args
     handle_deprecated_model_args(args, io)
     if args.openai_api_base:
-        os.environ["OPENAI_API_BASE"] = args.openai_api_base
+        # Normalize OPENAI_API_BASE by stripping trailing /chat/completions to
+        # prevent double-pathing. litellm/openai library appends /chat/completions
+        # to the base URL, so users should NOT include it in --openai-api-base.
+        # This catches common mistakes like:
+        #   .../v1/chat/completions        ->  .../v1
+        #   .../openai/chat/completions    ->  .../openai
+        #   .../compat/chat/completions    ->  .../compat
+        base_url = args.openai_api_base.rstrip("/")
+        chat_completions_suffix = "/chat/completions"
+        if base_url.endswith(chat_completions_suffix):
+            base_url = base_url[: -len(chat_completions_suffix)]
+        os.environ["OPENAI_API_BASE"] = base_url
     if args.openai_api_version:
         io.tool_warning(
             "--openai-api-version is deprecated, use --set-env OPENAI_API_VERSION=<value>"
