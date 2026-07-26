@@ -727,6 +727,7 @@ def run_test_real(
     test_files = config.get("files", {}).get("test", [])
     example_files = config.get("files", {}).get("example", [])
     solution_files = set(config.get("files", {}).get("solution", []))
+    editor_files = config.get("files", {}).get("editor", [])
 
     # Forcibly ignore certain files not covered by test_files and example_files
     ignore_files = set(
@@ -740,11 +741,13 @@ def run_test_real(
     ignore_files.update(str(p.relative_to(testdir)) for p in testdir.glob(".meta/**/*"))
     ignore_files.update(str(p.relative_to(testdir)) for p in testdir.glob(".docs/**/*"))
 
-    # Also ignore test & example files
+    # Also ignore test, example, and editor files
     ignore_files.update(test_files)
     ignore_files.update(example_files)
+    ignore_files.update(editor_files)
 
     # Remove any ignore files from the solution set that LLM will edit
+    # Editor files must NOT be in the editable solution set
     solution_files.difference_update(ignore_files)
 
     # Copy all solution files
@@ -768,6 +771,28 @@ def run_test_real(
                 shutil.copy(original_fname, src)
         else:
             print(f"Warning: Solution file not found: {src}")
+
+    # Copy editor files from the original directory and prepare read-only paths
+    read_only_fnames = []
+    for file_path in editor_files:
+        src = testdir / Path(file_path)
+        # Copy from original if it doesn't exist yet
+        lang_part = str(testdir).split("/exercises/practice/")[0]
+        original_fname = (
+            original_dname
+            / Path(lang_part).name
+            / "exercises"
+            / "practice"
+            / testdir.name
+            / file_path
+        )
+        if original_fname.exists():
+            os.makedirs(src.parent, exist_ok=True)
+            shutil.copy(original_fname, src)
+        if src.exists():
+            read_only_fnames.append(src)
+        else:
+            print(f"Warning: Editor file not found: {src}")
 
     file_list = " ".join(fname.name for fname in fnames)
 
@@ -824,6 +849,7 @@ def run_test_real(
         edit_format,
         io,
         fnames=fnames,
+        read_only_fnames=read_only_fnames,
         use_git=False,
         stream=False,
         verbose=verbose,
