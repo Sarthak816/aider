@@ -40,6 +40,24 @@ from aider.watch import FileWatcher
 from .dump import dump  # noqa: F401
 
 
+def resolve_file_arg(fname, io):
+    """Resolve a file argument to an absolute path.
+
+    Returns None (after printing a clean error) if the path cannot be
+    accessed by the OS, e.g. because the filename is too long for the
+    filesystem (issue #5546).
+    """
+    try:
+        abs_fname = str(Path(fname).expanduser().resolve())
+        # Probe that the path can be stat'd. Some platforms raise OSError
+        # here (e.g. ENAMETOOLONG) instead of returning False from is_dir().
+        Path(abs_fname).is_dir()
+        return abs_fname
+    except OSError as err:
+        io.tool_error(f"Error: Unable to access file {fname}: {err}")
+        return None
+
+
 def check_config_files_for_yes(config_files):
     found = False
     for config_file in config_files:
@@ -677,14 +695,24 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             io.tool_output(f"Loaded {fname}")
 
     all_files = args.files + (args.file or [])
-    fnames = [str(Path(fn).resolve()) for fn in all_files]
+    fnames = []
+    for fn in all_files:
+        abs_fname = resolve_file_arg(fn, io)
+        if abs_fname is None:
+            analytics.event("exit", reason="Invalid file argument")
+            return 1
+        fnames.append(abs_fname)
     read_only_fnames = []
     for fn in args.read or []:
-        path = Path(fn).expanduser().resolve()
+        abs_fname = resolve_file_arg(fn, io)
+        if abs_fname is None:
+            analytics.event("exit", reason="Invalid file argument")
+            return 1
+        path = Path(abs_fname)
         if path.is_dir():
             read_only_fnames.extend(str(f) for f in path.rglob("*") if f.is_file())
         else:
-            read_only_fnames.append(str(path))
+            read_only_fnames.append(abs_fname)
 
     if len(all_files) > 1:
         good = True

@@ -52,6 +52,34 @@ class TestMain(TestCase):
         main(["foo.txt", "--yes", "--no-git", "--exit"], input=DummyInput(), output=DummyOutput())
         self.assertTrue(os.path.exists("foo.txt"))
 
+    def test_main_with_too_long_file_arg(self):
+        # A file arg that the OS cannot stat (e.g. ENAMETOOLONG "File name
+        # too long") should produce a clean error, not an uncaught OSError
+        # (issue #5546).
+        long_name = "x" * 300
+
+        real_is_dir = Path.is_dir
+
+        def fake_is_dir(self):
+            if len(self.name) > 255:
+                raise OSError(63, "File name too long")
+            return real_is_dir(self)
+
+        with patch("aider.main.InputOutput.tool_error") as mock_tool_error:
+            with patch("pathlib.Path.is_dir", fake_is_dir):
+                result = main(
+                    [long_name, "--no-git", "--exit", "--yes"],
+                    input=DummyInput(),
+                    output=DummyOutput(),
+                )
+        self.assertEqual(result, 1)
+        self.assertTrue(
+            any(
+                "Unable to access file" in str(call.args[0])
+                for call in mock_tool_error.call_args_list
+            )
+        )
+
     @patch("aider.repo.GitRepo.get_commit_message", return_value="mock commit message")
     def test_main_with_empty_git_dir_new_file(self, _):
         make_repo()
