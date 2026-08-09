@@ -74,7 +74,10 @@ class TestMain(TestCase):
                 )
         self.assertEqual(result, 1)
         self.assertTrue(
-            any("Unable to access file" in str(call.args[0]) for call in mock_tool_error.call_args_list)
+            any(
+                "Unable to access file" in str(call.args[0])
+                for call in mock_tool_error.call_args_list
+            )
         )
 
     @patch("aider.repo.GitRepo.get_commit_message", return_value="mock commit message")
