@@ -1357,8 +1357,14 @@ class Commands:
                     # For absolute paths, glob it
                     matches = [Path(p) for p in glob.glob(expanded_pattern)]
                 else:
-                    # For relative paths and globs, use glob from the root directory
-                    matches = list(Path(self.coder.root).glob(expanded_pattern))
+                    try:
+                        # For relative paths and globs, use glob from the root directory
+                        matches = list(Path(self.coder.root).glob(expanded_pattern))
+                    except NotImplementedError:
+                        # Path.glob() rejects patterns that contain a drive or a
+                        # root, such as "C:foo" or "/foo" on Windows, so glob
+                        # them relative to the drive instead
+                        matches = [Path(p) for p in glob.glob(str(path_obj), recursive=True)]
 
             if not matches:
                 self.io.tool_error(f"No matches found for: {pattern}")
