@@ -1034,6 +1034,21 @@ class TestCommands(TestCase):
             # Ensure no files were added to abs_read_only_fnames
             self.assertEqual(len(coder.abs_read_only_fnames), 0)
 
+    def test_cmd_read_only_with_rooted_glob_pattern(self):
+        with GitTemporaryDirectory():
+            io = InputOutput(pretty=False, fancy_input=False, yes=False)
+            coder = Coder.create(self.GPT35, None, io)
+            commands = Commands(io, coder)
+
+            # A leading separator makes the pattern rooted, but not absolute on
+            # Windows, where Path.glob() rejects it with NotImplementedError.
+            pattern = os.sep + "nonexistent_rooted*.txt"
+            with mock.patch.object(io, "tool_error") as mock_tool_error:
+                commands.cmd_read_only(pattern)
+
+            mock_tool_error.assert_called_once_with(f"No matches found for: {pattern}")
+            self.assertEqual(len(coder.abs_read_only_fnames), 0)
+
     def test_cmd_add_unicode_error(self):
         # Initialize the Commands and InputOutput objects
         io = InputOutput(pretty=False, fancy_input=False, yes=True)
