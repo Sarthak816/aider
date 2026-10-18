@@ -902,6 +902,28 @@ class TestMain(TestCase):
                     )
                 mock_set_verify_ssl.assert_called_once_with(False)
 
+    def test_main_with_broken_litellm_install(self):
+        # #5792: a missing litellm dependency (eg aiohttp) should exit cleanly
+        with GitTemporaryDirectory():
+            err = ModuleNotFoundError(
+                "litellm failed to import because the 'aiohttp' package is missing.",
+                name="aiohttp",
+            )
+            with patch("aider.models.Model", side_effect=err):
+                with patch("aider.io.InputOutput.offer_url") as mock_offer_url:
+                    with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
+                        rc = main(
+                            ["--model", "gpt-4", "--exit", "--yes", "--no-gitignore"],
+                            input=DummyInput(),
+                            output=DummyOutput(),
+                        )
+                    output = mock_stdout.getvalue()
+
+            self.assertEqual(rc, 1)
+            self.assertIn("unable to load litellm", output)
+            self.assertIn("aiohttp", output)
+            mock_offer_url.assert_called_once()
+
     def test_pytest_env_vars(self):
         # Verify that environment variables from pytest.ini are properly set
         self.assertEqual(os.environ.get("AIDER_ANALYTICS"), "false")
