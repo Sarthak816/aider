@@ -819,13 +819,20 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             )
             return 1
 
-    main_model = models.Model(
-        args.model,
-        weak_model=args.weak_model,
-        editor_model=args.editor_model,
-        editor_edit_format=args.editor_edit_format,
-        verbose=args.verbose,
-    )
+    try:
+        main_model = models.Model(
+            args.model,
+            weak_model=args.weak_model,
+            editor_model=args.editor_model,
+            editor_edit_format=args.editor_edit_format,
+            verbose=args.verbose,
+        )
+    except ImportError as err:
+        # eg a broken or partial litellm install, with a dependency missing
+        io.tool_error(f"Error: unable to load litellm: {err}")
+        io.offer_url(urls.install_properly, "Open documentation url for more info?")
+        analytics.event("exit", reason=f"Unable to load litellm: {err}")
+        return 1
 
     # Check if deprecated remove_reasoning is set
     if main_model.remove_reasoning is not None:
