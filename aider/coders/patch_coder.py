@@ -56,6 +56,14 @@ def _norm(line: str) -> str:
     return line.rstrip("\r")
 
 
+def _is_empty_file(path: pathlib.Path) -> bool:
+    """True for an empty regular file, eg a placeholder created by prepare_to_edit."""
+    try:
+        return path.is_file() and path.stat().st_size == 0
+    except OSError:
+        return False
+
+
 def find_context_core(lines: List[str], context: List[str], start: int) -> Tuple[int, int]:
     """Finds context block, returns start index and fuzz level."""
     if not context:
@@ -564,8 +572,11 @@ class PatchCoder(Coder):
 
             try:
                 if action.type == ActionType.ADD:
-                    # Check existence *before* writing
-                    if path_obj.exists():
+                    # Check existence *before* writing, but ignore empty placeholders:
+                    # prepare_to_edit() touches every path it allows edits to, so a
+                    # brand new file already exists (and is empty) by the time we
+                    # get here. A leftover from a failed attempt is empty too.
+                    if path_obj.exists() and not _is_empty_file(path_obj):
                         raise DiffError(f"ADD Error: File already exists: {action.path}")
                     if action.new_content is None:
                         # Parser should ensure this doesn't happen
