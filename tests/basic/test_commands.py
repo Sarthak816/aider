@@ -1823,6 +1823,48 @@ class TestCommands(TestCase):
             mock_run.assert_called_once()
             mock_run.assert_called_once_with(question)
 
+    def test_cmd_code_without_args_does_not_summarize(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        # Pretend we are in a different mode, so switching back to code changes the edit format
+        coder.edit_format = "ask"
+        done_messages = [
+            {"role": "user", "content": "Set LIMIT to 5."},
+            {"role": "assistant", "content": "Applied edit to quota.py"},
+        ]
+        coder.done_messages = list(done_messages)
+        commands = Commands(io, coder)
+
+        with self.assertRaises(SwitchCoder) as context:
+            commands.cmd_code("")
+
+        kwargs = context.exception.kwargs
+        self.assertEqual(kwargs.get("edit_format"), coder.main_model.edit_format)
+        self.assertFalse(kwargs.get("summarize_from_coder"))
+
+        # The new coder must keep the history verbatim, with no summarizer call
+        with mock.patch("aider.history.ChatSummary.summarize_all") as mock_summarize:
+            new_coder = Coder.create(io=io, from_coder=coder, **kwargs)
+
+        mock_summarize.assert_not_called()
+        self.assertEqual(new_coder.done_messages, done_messages)
+        self.assertEqual(new_coder.edit_format, coder.main_model.edit_format)
+
+    def test_cmd_code_without_args_matches_chat_mode_code(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with self.assertRaises(SwitchCoder) as context:
+            commands.cmd_code("")
+        code_kwargs = context.exception.kwargs
+
+        with self.assertRaises(SwitchCoder) as context:
+            commands.cmd_chat_mode("code")
+        chat_mode_kwargs = context.exception.kwargs
+
+        self.assertEqual(code_kwargs, chat_mode_kwargs)
+
     def test_cmd_lint_with_dirty_file(self):
         with GitTemporaryDirectory() as repo_dir:
             repo = git.Repo(repo_dir)

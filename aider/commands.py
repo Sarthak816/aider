@@ -1185,7 +1185,7 @@ class Commands:
 
     def cmd_code(self, args):
         """Ask for changes to your code. If no prompt provided, switches to code mode."""  # noqa
-        return self._generic_chat_command(args, self.coder.main_model.edit_format)
+        return self._generic_chat_command(args, self.coder.main_model.edit_format, chat_mode="code")
 
     def cmd_architect(self, args):
         """Enter architect/editor mode using 2 different models. If no prompt provided, switches to architect/editor mode."""  # noqa
@@ -1203,10 +1203,12 @@ class Commands:
             msg = f"{msg} {extra}"
         return self.cmd_code(msg)
 
-    def _generic_chat_command(self, args, edit_format, placeholder=None):
+    def _generic_chat_command(self, args, edit_format, placeholder=None, chat_mode=None):
         if not args.strip():
-            # Switch to the corresponding chat mode if no args provided
-            return self.cmd_chat_mode(edit_format)
+            # Switch to the corresponding chat mode if no args provided.
+            # Pass the chat mode name when it differs from the edit format (eg "code"),
+            # so this behaves exactly like `/chat-mode <name>`.
+            return self.cmd_chat_mode(chat_mode or edit_format)
 
         from aider.coders.base_coder import Coder
 
