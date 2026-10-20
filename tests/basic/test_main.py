@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
 from io import StringIO
 from pathlib import Path
 from unittest import TestCase
@@ -14,7 +15,13 @@ from prompt_toolkit.output import DummyOutput
 from aider.coders import Coder
 from aider.dump import dump  # noqa: F401
 from aider.io import InputOutput
-from aider.main import check_gitignore, load_dotenv_files, main, setup_git
+from aider.main import (
+    check_and_load_imports,
+    check_gitignore,
+    load_dotenv_files,
+    main,
+    setup_git,
+)
 from aider.utils import GitTemporaryDirectory, IgnorantTemporaryDirectory, make_repo
 
 
@@ -1259,6 +1266,56 @@ class TestMain(TestCase):
 
                 # Check that both models appear in the output
                 self.assertIn("test-provider/metadata-only-model", output)
+
+    def test_list_models_loads_imports_in_this_thread(self):
+        # --list-models prints and exits right away, so the deferred imports must
+        # not be left in a background thread: shutting the interpreter down while
+        # they are still initialising native modules segfaults the process (#5776).
+        loaded_in = []
+
+        def fake_load_slow_imports(swallow=True):
+            loaded_in.append(threading.current_thread())
+
+        with GitTemporaryDirectory():
+            with patch("aider.main.load_slow_imports", fake_load_slow_imports):
+                with patch("aider.main.is_first_run_of_new_version", return_value=False):
+                    with patch("sys.stdout", new_callable=StringIO):
+                        main(
+                            ["--list-models", "gpt-4o", "--yes", "--no-gitignore"],
+                            input=DummyInput(),
+                            output=DummyOutput(),
+                        )
+
+        self.assertEqual(loaded_in, [threading.main_thread()])
+
+    def test_check_and_load_imports_backgrounds_thread_after_first_run(self):
+        loaded = threading.Event()
+
+        def fake_load_slow_imports(swallow=True):
+            loaded.set()
+
+        io = InputOutput(yes=True, pretty=False)
+        with patch("aider.main.load_slow_imports", fake_load_slow_imports):
+            thread = check_and_load_imports(io, is_first_run=False)
+
+        self.assertIsNotNone(thread)
+        self.assertTrue(thread.daemon)
+        thread.join(timeout=5)
+        self.assertTrue(loaded.is_set())
+        self.assertFalse(thread.is_alive())
+
+    def test_check_and_load_imports_sync_flag_uses_this_thread(self):
+        loaded_in = []
+
+        def fake_load_slow_imports(swallow=True):
+            loaded_in.append(threading.current_thread())
+
+        io = InputOutput(yes=True, pretty=False)
+        with patch("aider.main.load_slow_imports", fake_load_slow_imports):
+            thread = check_and_load_imports(io, is_first_run=False, sync=True)
+
+        self.assertIsNone(thread)
+        self.assertEqual(loaded_in, [threading.main_thread()])
 
     def test_check_model_accepts_settings_flag(self):
         # Test that --check-model-accepts-settings affects whether settings are applied

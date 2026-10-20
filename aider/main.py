@@ -751,7 +751,12 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     io.tool_output(cmd_line, log_only=True)
 
     is_first_run = is_first_run_of_new_version(io, verbose=args.verbose)
-    check_and_load_imports(io, is_first_run, verbose=args.verbose)
+    # --list-models needs the deferred imports to enumerate models, and it exits
+    # as soon as it has printed them. Load them here instead of in a background
+    # thread, which can still be initialising native extensions when the
+    # interpreter shuts down. Doing that kills the process with a segfault
+    # instead of reporting the imports it was still working on.
+    check_and_load_imports(io, is_first_run, verbose=args.verbose, sync=bool(args.list_models))
 
     register_models(git_root, args.model_settings_file, io, verbose=args.verbose)
     register_litellm_models(git_root, args.model_metadata_file, io, verbose=args.verbose)
@@ -1223,15 +1228,23 @@ def is_first_run_of_new_version(io, verbose=False):
         return True  # Safer to assume it's a first run if we hit an error
 
 
-def check_and_load_imports(io, is_first_run, verbose=False):
+def check_and_load_imports(io, is_first_run, verbose=False, sync=False):
+    """Load the deferred imports, in this thread or in a daemon thread.
+
+    Returns the background thread when one was started, so callers which exit
+    promptly can join it. Pass sync=True to always load in the calling thread.
+    """
     try:
-        if is_first_run:
+        if is_first_run or sync:
             if verbose:
-                io.tool_output(
-                    "First run for this version and executable, loading imports synchronously"
-                )
+                if is_first_run:
+                    io.tool_output(
+                        "First run for this version and executable, loading imports synchronously"
+                    )
+                else:
+                    io.tool_output("Loading imports synchronously")
             try:
-                load_slow_imports(swallow=False)
+                load_slow_imports(swallow=not is_first_run)
             except Exception as err:
                 io.tool_error(str(err))
                 io.tool_output("Error loading required imports. Did you install aider properly?")
@@ -1240,17 +1253,20 @@ def check_and_load_imports(io, is_first_run, verbose=False):
 
             if verbose:
                 io.tool_output("Imports loaded and installs file updated")
+            return None
         else:
             if verbose:
                 io.tool_output("Not first run, loading imports in background thread")
             thread = threading.Thread(target=load_slow_imports)
             thread.daemon = True
             thread.start()
+            return thread
 
     except Exception as e:
         io.tool_warning(f"Error in loading imports: {e}")
         if verbose:
             io.tool_output(f"Full exception details: {traceback.format_exc()}")
+        return None
 
 
 def load_slow_imports(swallow=True):
