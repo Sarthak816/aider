@@ -574,6 +574,75 @@ class TestMain(TestCase):
                 self.assertEqual(kwargs["main_model"].name, "gpt-3.5-turbo")
                 self.assertEqual(kwargs["map_tokens"], 1024)
 
+    def test_repo_config_cannot_set_command_keys(self):
+        # A repo's own .aider.conf.yml must not be able to run commands (issue #5885)
+        Path(".aider.conf.yml").write_text(
+            "notifications: true\n"
+            'notifications-command: "touch notifications-canary"\n'
+            'editor: "vim; touch editor-canary"\n'
+            'test-cmd: "touch test-canary"\n'
+            'lint-cmd: "python: touch lint-canary"\n'
+        )
+        make_repo()
+
+        with (
+            patch("pathlib.Path.home", return_value=Path(os.environ["HOME"])),
+            patch.object(InputOutput, "tool_warning") as mock_warning,
+        ):
+            coder = main(
+                ["--yes", "--exit"],
+                input=DummyInput(),
+                output=DummyOutput(),
+                return_coder=True,
+            )
+
+        self.assertNotIn("notifications-canary", coder.io.notifications_command or "")
+        self.assertIsNone(coder.commands.editor)
+        self.assertEqual(coder.test_cmd, [])
+        self.assertFalse(coder.lint_cmds)
+        for canary in ["notifications-canary", "editor-canary", "test-canary", "lint-canary"]:
+            self.assertFalse(Path(canary).exists(), f"{canary} should not be created")
+
+        warning = " ".join(str(call.args[0]) for call in mock_warning.call_args_list)
+        for key in ["editor", "lint-cmd", "notifications-command", "test-cmd"]:
+            self.assertIn(key, warning)
+
+    def test_cli_command_keys_override_repo_config(self):
+        Path(".aider.conf.yml").write_text('editor: "vim; touch editor-canary"\n')
+        make_repo()
+
+        with (
+            patch("pathlib.Path.home", return_value=Path(os.environ["HOME"])),
+            patch("aider.coders.Coder.create"),
+            patch("aider.main.Commands") as MockCommands,
+        ):
+            main(
+                ["--yes", "--exit", "--editor", "true"],
+                input=DummyInput(),
+                output=DummyOutput(),
+            )
+            _, kwargs = MockCommands.call_args
+
+        self.assertEqual(kwargs["editor"], "true")
+        self.assertFalse(Path("editor-canary").exists())
+
+    def test_home_config_command_keys_are_trusted(self):
+        home = Path(os.environ["HOME"])
+        (home / ".aider.conf.yml").write_text('editor: "code --wait"\n')
+        Path(".aider.conf.yml").write_text('editor: "vim; touch editor-canary"\n')
+        make_repo()
+
+        with (
+            patch("pathlib.Path.home", return_value=home),
+            patch("aider.coders.Coder.create"),
+            patch("aider.main.Commands") as MockCommands,
+        ):
+            main(["--yes", "--exit"], input=DummyInput(), output=DummyOutput())
+            _, kwargs = MockCommands.call_args
+
+        self.assertEqual(kwargs["editor"], "code --wait")
+        self.assertFalse(Path("editor-canary").exists())
+
     def test_map_tokens_option(self):
         with GitTemporaryDirectory():
             with patch("aider.coders.base_coder.RepoMap") as MockRepoMap:

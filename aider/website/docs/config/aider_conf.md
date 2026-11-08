@@ -17,6 +17,16 @@ If the files above exist, they will be loaded in that order. Files loaded last w
 
 You can also specify the `--config <filename>` parameter, which will only load the one config file.
 
+## Settings that run commands
+
+Some settings name a command for aider to run: `test-cmd`, `lint-cmd`,
+`notifications-command` and `editor`. Because the config file in your repo arrives
+with code you did not write, aider only honors these keys when they come from the
+command line, from `--config <filename>`, or from `~/.aider.conf.yml`.
+If a `.aider.conf.yml` in the repo root or the current directory sets one of them,
+aider ignores that value and tells you which keys it skipped, so that opening a
+cloned repo cannot make aider run a command for you.
+
 {% include keys.md %}
 
 ## A note on lists
