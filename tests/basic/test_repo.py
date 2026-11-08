@@ -620,6 +620,48 @@ class TestRepo(unittest.TestCase):
             self.assertNotIn(str(root_file), tracked_files)
             self.assertNotIn(str(another_subdir_file), tracked_files)
 
+    def test_normalize_path_accepts_path_objects(self):
+        # Issue #5946: callers pass Path objects, so normalize_path must not
+        # assume it was given a str (eg calling str methods on it)
+        with GitTemporaryDirectory():
+            raw_repo = git.Repo()
+            fname = Path("subdir/file.txt")
+            fname.parent.mkdir()
+            fname.touch()
+            raw_repo.git.add(str(fname))
+
+            git_repo = GitRepo(InputOutput(), None, None)
+
+            from_path = git_repo.normalize_path(fname)
+            from_pathlib_abs = git_repo.normalize_path(fname.resolve())
+            git_repo.normalized_path.clear()
+            from_str = git_repo.normalize_path(str(fname))
+
+            self.assertIsInstance(from_path, str)
+            self.assertEqual(from_path, from_str)
+            self.assertEqual(from_path, from_pathlib_abs)
+            self.assertTrue(from_path.endswith("file.txt"))
+
+    def test_ignored_file_accepts_path_objects(self):
+        # Issue #5946: ignored_file() and normalize_path() are called with Paths
+        with GitTemporaryDirectory():
+            Path("keep.py").touch()
+            skip = Path("skip.log")
+            skip.touch()
+
+            aiderignore = Path(".aiderignore")
+            aiderignore.write_text("*.log\n")
+
+            git_repo = GitRepo(InputOutput(), None, None, str(aiderignore))
+
+            self.assertEqual(git_repo.normalize_path(skip), git_repo.normalize_path("skip.log"))
+            self.assertTrue(git_repo.ignored_file(skip))
+            self.assertFalse(git_repo.ignored_file(Path("keep.py")))
+
+            # A Path and the equivalent str must not produce two cache entries
+            self.assertIn(os.fspath(skip), git_repo.ignore_file_cache)
+            self.assertNotIn(skip, git_repo.ignore_file_cache)
+
     @patch("aider.models.Model.simple_send_with_retries")
     def test_noop_commit(self, mock_send):
         mock_send.return_value = '"a good commit message"'

@@ -488,6 +488,9 @@ class GitRepo:
         return res
 
     def normalize_path(self, path):
+        # Callers pass both str and Path objects (eg the Coder passes Paths),
+        # so never assume the argument already is a str. See issue #5946.
+        path = os.fspath(path)
         orig_path = path
         res = self.normalized_path.get(orig_path)
         if res:
@@ -532,6 +535,8 @@ class GitRepo:
     def ignored_file(self, fname):
         self.refresh_aider_ignore()
 
+        # Canonicalize str/Path so both forms share one cache entry
+        fname = os.fspath(fname)
         if fname in self.ignore_file_cache:
             return self.ignore_file_cache[fname]
 
