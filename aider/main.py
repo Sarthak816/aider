@@ -15,6 +15,7 @@ except ImportError:
 
 import importlib_resources
 import shtab
+import yaml
 from dotenv import load_dotenv
 from prompt_toolkit.enums import EditingMode
 
@@ -55,6 +56,76 @@ def check_config_files_for_yes(config_files):
             except Exception:
                 pass
     return found
+
+
+# Settings whose values aider executes, either through a shell or as a program.
+# A repository's own .aider.conf.yml is attacker controlled when you open a repo you
+# cloned, so these are only honored from the command line or from your home config.
+# See issue #5885.
+COMMAND_CONFIG_KEYS = {
+    "test-cmd": "test_cmd",
+    "lint-cmd": "lint_cmd",
+    "notifications-command": "notifications_command",
+    "editor": "editor",
+}
+COMMAND_CONFIG_DEFAULTS = {
+    "test_cmd": [],
+    "lint_cmd": [],
+    "notifications_command": None,
+    "editor": None,
+}
+# --lint-cmd accumulates values, so configargparse turns a single YAML value into a list
+LIST_COMMAND_ARGS = {"lint_cmd"}
+
+
+def _config_arg_value(arg_name, value):
+    """Shape a config file value the way the parser would have."""
+    if arg_name in LIST_COMMAND_ARGS and not isinstance(value, (list, tuple)):
+        return [value]
+    return value
+
+
+def read_config_commands(conf_files):
+    """Find command-bearing settings in the given .aider.conf.yml files.
+
+    Returns {arg_name: value} for every such key that one of the files sets.
+    """
+    found = {}
+    for conf_file in conf_files:
+        if not Path(conf_file).exists():
+            continue
+        try:
+            with open(conf_file, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        for key, arg_name in COMMAND_CONFIG_KEYS.items():
+            if key in data:
+                found[arg_name] = data[key]
+    return found
+
+
+def drop_untrusted_config_commands(args, repo_config_files, home_config_file=None):
+    """Ignore command settings that came from the repo's own config file.
+
+    Values the command line specified are kept, because the user typed those.
+    A dropped value falls back to the home config value, or to the default.
+
+    :return: the list of config keys that were ignored
+    """
+    trusted = read_config_commands([home_config_file]) if home_config_file else {}
+    ignored = []
+    for arg_name, value in read_config_commands(repo_config_files).items():
+        if getattr(args, arg_name, None) != _config_arg_value(arg_name, value):
+            continue
+        fallback = trusted.get(arg_name, COMMAND_CONFIG_DEFAULTS[arg_name])
+        if isinstance(fallback, list):
+            fallback = list(fallback)
+        setattr(args, arg_name, fallback)
+        ignored.append(arg_name)
+    return ignored
 
 
 def get_git_root():
@@ -476,6 +547,15 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     default_config_files.append(Path.home() / conf_fname)  # homedir
     default_config_files = list(map(str, default_config_files))
 
+    # Every config file above except the home one arrived with the repo you opened,
+    # so it is not trusted with settings that run commands. See issue #5885.
+    home_config_file = str(Path.home() / conf_fname)
+    repo_config_files = [
+        conf_file
+        for conf_file in default_config_files
+        if Path(conf_file).resolve() != Path(home_config_file).resolve()
+    ]
+
     parser = get_parser(default_config_files, git_root)
     try:
         args, unknown = parser.parse_known_args(argv)
@@ -502,6 +582,10 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
 
     # Parse again to include any arguments that might have been defined in .env
     args = parser.parse_args(argv)
+
+    ignored_config_commands = drop_untrusted_config_commands(
+        args, repo_config_files, home_config_file
+    )
 
     if args.shell_completions:
         # Ensure parser.prog is set for shtab, though it should be by default
@@ -585,6 +669,14 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             raise err
         io = get_io(False)
         io.tool_warning("Terminal does not support pretty output (UnicodeDecodeError)")
+
+    if ignored_config_commands:
+        keys = ", ".join(sorted(key.replace("_", "-") for key in ignored_config_commands))
+        io.tool_warning(f"Ignoring {keys} from the repository's .aider.conf.yml")
+        io.tool_output(
+            "Settings that run commands are only honored from the command line or from"
+            " ~/.aider.conf.yml, not from a config file that came with the repo."
+        )
 
     # Process any environment variables set via --set-env
     if args.set_env:
